@@ -11,7 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
-.env
+
 .env.local
 build
 
@@ -25,3 +25,5 @@ build
 *.njsproj
 *.sln
 *.sw?
+.env
+backend/.env
