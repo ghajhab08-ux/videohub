@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Lock, User, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
-const API_BASE = 'http://localhost:4000';
+import { API_BASE } from '../../config';
 
 const AdminLogin = () => {
     const [username, setUsername] = useState('');
