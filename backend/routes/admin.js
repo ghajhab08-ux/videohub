@@ -4,14 +4,16 @@ const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const authMiddleware = require('../middleware/auth');
+// const authMiddleware = require('../middleware/auth'); // Removed old import
 
 const VIDEOS_FILE = path.join(__dirname, '../data/videos.json');
 const SUBMISSIONS_FILE = path.join(__dirname, '../data/submissions.json');
 const REPORTS_FILE = path.join(__dirname, '../data/reports.json');
 const USERS_FILE = path.join(__dirname, '../data/users.json');
 
-// Helpers
+const supabase = require('../utils/supabase');
+
+// Helpers - We'll keep these for now but might remove if unused later
 const getData = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const setData = (file, data) =>
     fs.writeFileSync(file, JSON.stringify(data, null, 2));
@@ -20,7 +22,7 @@ const setData = (file, data) =>
  * POST /api/admin/login
  * Unified login for both Admin and Users
  */
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
@@ -55,44 +57,44 @@ router.post('/login', (req, res) => {
         });
     }
 
-    // 2. Proceed with normal user authentication
+    // 2. Proceed with normal user authentication via Supabase
     try {
-        if (!fs.existsSync(USERS_FILE)) {
-            fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
-        }
-        
-        const users = getData(USERS_FILE);
-        const user = users.find(u => u.username === trimmedUsername && u.password === trimmedPassword);
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', trimmedUsername)
+            .eq('password', trimmedPassword)
+            .single();
 
-        if (user) {
-            const token = jwt.sign(
-                { id: user.id, username: user.username, role: 'user' },
-                process.env.JWT_SECRET,
-                { expiresIn: '7d' }
-            );
-
-            console.log(`User login successful: ${user.username}`);
-            return res.json({
-                success: true,
-                message: 'Login successful',
-                token,
-                role: 'user'
-            });
+        if (error || !user) {
+            console.log('Login failed: Invalid credentials');
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
+
+        const token = jwt.sign(
+            { id: user.id, username: user.username, role: user.role || 'user' },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        console.log(`User login successful: ${user.username}`);
+        return res.json({
+            success: true,
+            message: 'Login successful',
+            token,
+            role: user.role || 'user'
+        });
     } catch (err) {
         console.error('User Auth Error:', err);
         return res.status(500).json({ error: 'Server error during authentication' });
     }
-
-    console.log('Login failed: Invalid credentials');
-    res.status(401).json({ error: 'Invalid credentials' });
 });
 
 /**
  * POST /api/admin/signup
- * Basic user registration
+ * Basic user registration using Supabase
  */
-router.post('/signup', (req, res) => {
+router.post('/signup', async (req, res) => {
     const { username, password, email } = req.body;
 
     if (!username || !password) {
@@ -100,30 +102,37 @@ router.post('/signup', (req, res) => {
     }
 
     try {
-        if (!fs.existsSync(USERS_FILE)) {
-            fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2));
-        }
-
-        const users = getData(USERS_FILE);
+        const { data: existingUser, error: checkError } = await supabase
+            .from('users')
+            .select('username')
+            .eq('username', username.trim())
+            .maybeSingle();
         
-        if (users.find(u => u.username === username.trim())) {
+        if (checkError) throw checkError;
+
+        if (existingUser) {
             return res.status(400).json({ error: 'Username already exists' });
         }
 
         const newUser = {
-            id: uuidv4(),
             username: username.trim(),
-            password: password.trim(), // In production, hash this!
+            password: password.trim(), 
             email: email?.trim() || '',
             role: 'user',
             createdAt: new Date().toISOString()
         };
 
-        users.push(newUser);
-        setData(USERS_FILE, users);
+        const { data, error } = await supabase
+            .from('users')
+            .insert([newUser])
+            .select()
+            .single();
+
+        if (error) throw error;
+        if (!data) throw new Error('Failed to create account');
 
         const token = jwt.sign(
-            { id: newUser.id, username: newUser.username, role: 'user' },
+            { id: data.id, username: data.username, role: 'user' },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -132,22 +141,25 @@ router.post('/signup', (req, res) => {
             success: true,
             message: 'Account created successfully',
             token,
-            role: 'user'
+            role: 'user',
+            username: data.username
         });
     } catch (err) {
-        console.error('Signup Error:', err);
-        res.status(500).json({ error: 'Failed to create account' });
+        res.status(500).json({ error: err.message || 'Failed to create account' });
     }
 });
 
 // 🔒 Protect everything below
-router.use(authMiddleware);
+const { adminMiddleware } = require('../middleware/auth');
+
+// 🔒 Protect everything below
+router.use(adminMiddleware);
 
 /**
  * POST /api/admin/upload-video
  * Metadata only (Bunny CDN URL)
  */
-router.post('/upload-video', (req, res) => {
+router.post('/upload-video', async (req, res) => {
     const { title, description, categories, videoUrl, thumbnail, sourceType = 'bunny' } = req.body;
 
     if (!title || !videoUrl || !Array.isArray(categories) || categories.length === 0) {
@@ -173,17 +185,14 @@ router.post('/upload-video', (req, res) => {
     }
 
     try {
-        const videos = getData(VIDEOS_FILE);
-
         const normalizedCategories = [...new Set(
             categories.map(c => String(c).trim()).filter(Boolean)
         )];
 
         const newVideo = {
-            id: uuidv4(),
             title: title.trim(),
             description: description?.trim() || '',
-            categories: normalizedCategories,
+            category: normalizedCategories[0] || 'Uncategorized', // Using single category as per request
             videoUrl,
             thumbnail: thumbnail?.trim() || '',
             sourceType,
@@ -192,13 +201,18 @@ router.post('/upload-video', (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        videos.unshift(newVideo);
-        setData(VIDEOS_FILE, videos);
+        const { data, error } = await supabase
+            .from('videohubweb')
+            .insert([newVideo])
+            .select()
+            .single();
+
+        if (error) throw error;
 
         res.json({
             success: true,
             message: 'Video published successfully',
-            video: newVideo
+            video: data
         });
     } catch (err) {
         console.error('Upload Error:', err);
@@ -210,10 +224,15 @@ router.post('/upload-video', (req, res) => {
  * GET /api/admin/videos
  * List all videos for admin management
  */
-router.get('/videos', (req, res) => {
+router.get('/videos', async (req, res) => {
     try {
-        const videos = getData(VIDEOS_FILE);
-        res.json(videos);
+        const { data, error } = await supabase
+            .from('videohubweb')
+            .select('*')
+            .order('createdAt', { ascending: false });
+        
+        if (error) throw error;
+        res.json(data);
     } catch {
         res.status(500).json({ error: 'Failed to fetch videos' });
     }
@@ -222,9 +241,15 @@ router.get('/videos', (req, res) => {
 /**
  * GET /api/admin/submissions
  */
-router.get('/submissions', (req, res) => {
+router.get('/submissions', async (req, res) => {
     try {
-        res.json(getData(SUBMISSIONS_FILE));
+        const { data, error } = await supabase
+            .from('submissions')
+            .select('*')
+            .order('createdAt', { ascending: false });
+        
+        if (error) throw error;
+        res.json(data);
     } catch {
         res.status(500).json({ error: 'Failed to fetch submissions' });
     }
@@ -233,9 +258,15 @@ router.get('/submissions', (req, res) => {
 /**
  * GET /api/admin/reports
  */
-router.get('/reports', (req, res) => {
+router.get('/reports', async (req, res) => {
     try {
-        res.json(getData(REPORTS_FILE));
+        const { data, error } = await supabase
+            .from('reports')
+            .select('*')
+            .order('createdAt', { ascending: false });
+        
+        if (error) throw error;
+        res.json(data);
     } catch {
         res.status(500).json({ error: 'Failed to fetch reports' });
     }
@@ -244,7 +275,7 @@ router.get('/reports', (req, res) => {
 /**
  * PUT /api/admin/video/:id
  */
-router.put('/video/:id', (req, res) => {
+router.put('/video/:id', async (req, res) => {
     const { title, description, categories, videoUrl, thumbnail, sourceType } = req.body;
     const { id } = req.params;
 
@@ -273,34 +304,33 @@ router.put('/video/:id', (req, res) => {
     }
 
     try {
-        const videos = getData(VIDEOS_FILE);
-        const index = videos.findIndex(v => v.id === id);
-
-        if (index === -1) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-
-        const updatedCategories = [...new Set(
+        const normalizedCategories = [...new Set(
             categories.map(c => String(c).trim()).filter(Boolean)
         )];
 
-        videos[index] = {
-            ...videos[index],
+        const updateData = {
             title: title.trim(),
             description: description?.trim() || '',
-            categories: updatedCategories,
+            category: normalizedCategories[0] || 'Uncategorized',
             videoUrl,
-            sourceType: sourceType || videos[index].sourceType || 'bunny',
-            thumbnail: thumbnail?.trim() || videos[index].thumbnail,
+            sourceType: sourceType || 'bunny',
+            thumbnail: thumbnail?.trim(),
             updatedAt: new Date().toISOString()
         };
 
-        setData(VIDEOS_FILE, videos);
+        const { data, error } = await supabase
+            .from('videohubweb')
+            .update(updateData)
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
 
         res.json({
             success: true,
             message: 'Video updated successfully',
-            video: videos[index]
+            video: data
         });
     } catch (err) {
         console.error('Update Error:', err);
@@ -311,16 +341,14 @@ router.put('/video/:id', (req, res) => {
 /**
  * DELETE /api/admin/video/:id
  */
-router.delete('/video/:id', (req, res) => {
+router.delete('/video/:id', async (req, res) => {
     try {
-        const videos = getData(VIDEOS_FILE);
-        const filtered = videos.filter(v => v.id !== req.params.id);
+        const { error } = await supabase
+            .from('videohubweb')
+            .delete()
+            .eq('id', req.params.id);
 
-        if (videos.length === filtered.length) {
-            return res.status(404).json({ error: 'Video not found' });
-        }
-
-        setData(VIDEOS_FILE, filtered);
+        if (error) throw error;
 
         res.json({
             success: true,
@@ -335,7 +363,7 @@ router.delete('/video/:id', (req, res) => {
 /**
  * PUT /api/admin/submission/:id
  */
-router.put('/submission/:id', (req, res) => {
+router.put('/submission/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
@@ -344,18 +372,15 @@ router.put('/submission/:id', (req, res) => {
     }
 
     try {
-        const submissions = getData(SUBMISSIONS_FILE);
-        const index = submissions.findIndex(s => s.id === id);
+        const { data, error } = await supabase
+            .from('submissions')
+            .update({ status, updatedAt: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single();
 
-        if (index === -1) {
-            return res.status(404).json({ error: 'Submission not found' });
-        }
-
-        submissions[index].status = status;
-        submissions[index].updatedAt = new Date().toISOString();
-        setData(SUBMISSIONS_FILE, submissions);
-
-        res.json({ success: true, submission: submissions[index] });
+        if (error) throw error;
+        res.json({ success: true, submission: data });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update submission' });
     }
@@ -364,16 +389,14 @@ router.put('/submission/:id', (req, res) => {
 /**
  * DELETE /api/admin/submission/:id
  */
-router.delete('/submission/:id', (req, res) => {
+router.delete('/submission/:id', async (req, res) => {
     try {
-        const submissions = getData(SUBMISSIONS_FILE);
-        const filtered = submissions.filter(s => s.id !== req.params.id);
+        const { error } = await supabase
+            .from('submissions')
+            .delete()
+            .eq('id', req.params.id);
 
-        if (submissions.length === filtered.length) {
-            return res.status(404).json({ error: 'Submission not found' });
-        }
-
-        setData(SUBMISSIONS_FILE, filtered);
+        if (error) throw error;
         res.json({ success: true, message: 'Submission deleted' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete submission' });
@@ -383,7 +406,7 @@ router.delete('/submission/:id', (req, res) => {
 /**
  * PUT /api/admin/report/:id
  */
-router.put('/report/:id', (req, res) => {
+router.put('/report/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
@@ -392,18 +415,15 @@ router.put('/report/:id', (req, res) => {
     }
 
     try {
-        const reports = getData(REPORTS_FILE);
-        const index = reports.findIndex(r => r.id === id);
+        const { data, error } = await supabase
+            .from('reports')
+            .update({ status, updatedAt: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single();
 
-        if (index === -1) {
-            return res.status(404).json({ error: 'Report not found' });
-        }
-
-        reports[index].status = status;
-        reports[index].updatedAt = new Date().toISOString();
-        setData(REPORTS_FILE, reports);
-
-        res.json({ success: true, report: reports[index] });
+        if (error) throw error;
+        res.json({ success: true, report: data });
     } catch (err) {
         res.status(500).json({ error: 'Failed to update report' });
     }
@@ -412,16 +432,14 @@ router.put('/report/:id', (req, res) => {
 /**
  * DELETE /api/admin/report/:id
  */
-router.delete('/report/:id', (req, res) => {
+router.delete('/report/:id', async (req, res) => {
     try {
-        const reports = getData(REPORTS_FILE);
-        const filtered = reports.filter(r => r.id !== req.params.id);
+        const { error } = await supabase
+            .from('reports')
+            .delete()
+            .eq('id', req.params.id);
 
-        if (reports.length === filtered.length) {
-            return res.status(404).json({ error: 'Report not found' });
-        }
-
-        setData(REPORTS_FILE, filtered);
+        if (error) throw error;
         res.json({ success: true, message: 'Report deleted' });
     } catch (err) {
         res.status(500).json({ error: 'Failed to delete report' });

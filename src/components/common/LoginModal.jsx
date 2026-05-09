@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../config';
 
+
 const LoginModal = ({ isOpen, onClose }) => {
     const [isLoginMode, setIsLoginMode] = useState(true);
     const [username, setUsername] = useState('');
@@ -14,6 +15,7 @@ const LoginModal = ({ isOpen, onClose }) => {
     
     const { login } = useAuth();
     const navigate = useNavigate();
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -124,9 +126,6 @@ const LoginModal = ({ isOpen, onClose }) => {
                         </button>
                     </form>
 
-                    <div style={styles.divider}>
-                        <span>OR</span>
-                    </div>
 
                     <button 
                         style={styles.registerBtn} 
@@ -226,13 +225,6 @@ const styles = {
         marginTop: '10px',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-    },
-    divider: {
-        margin: '30px 0',
-        borderTop: '1px solid #333',
-        position: 'relative',
-        display: 'flex',
         justifyContent: 'center',
     },
     registerBtn: {

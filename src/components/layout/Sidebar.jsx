@@ -127,14 +127,7 @@ const Sidebar = () => {
                     ))}
                 </div>
 
-                <div style={styles.adminSection}>
-                    {isAdmin && (
-                        <Link to="/admin/dashboard" style={styles.navLink} onClick={() => handleLinkClick('/admin/dashboard')}>
-                            <ShieldAlert size={20} style={styles.icon} />
-                            <span>Admin Dashboard</span>
-                        </Link>
-                    )}
-                </div>
+                {/* Admin section removed to hide entry point */}
             </aside>
 
             <LoginModal 

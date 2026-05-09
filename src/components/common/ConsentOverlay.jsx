@@ -1,27 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { ShieldCheck, AlertCircle, ExternalLink } from 'lucide-react';
 
-const ConsentOverlay = () => {
-    const [isAgeVerified, setIsAgeVerified] = useState(false);
-    const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
-    const [showAgeModal, setShowAgeModal] = useState(false);
-    const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-    const location = useLocation();
-
-    useEffect(() => {
-        const ageVerified = localStorage.getItem('isAgeVerified') === 'true';
-        const privacyAccepted = localStorage.getItem('isPrivacyAccepted') === 'true';
-
-        setIsAgeVerified(ageVerified);
-        setIsPrivacyAccepted(privacyAccepted);
-
-        if (!ageVerified) {
-            setShowAgeModal(true);
-        } else if (!privacyAccepted) {
-            setShowPrivacyModal(true);
-        }
-    }, []);
+const ConsentOverlay = ({ adultAccepted, privacyAccepted, onAdultAccept, onPrivacyAccept }) => {
+    // Determine which modal to show based on props
+    const showAgeModal = !adultAccepted;
+    const showPrivacyModal = adultAccepted && !privacyAccepted;
 
     // Prevent scrolling when modal is open
     useEffect(() => {
@@ -30,15 +14,15 @@ const ConsentOverlay = () => {
         } else {
             document.body.style.overflow = 'auto';
         }
+        
+        // Cleanup function to restore overflow when component unmounts
+        return () => {
+            document.body.style.overflow = 'auto';
+        };
     }, [showAgeModal, showPrivacyModal]);
 
     const handleAgeYes = () => {
-        localStorage.setItem('isAgeVerified', 'true');
-        setIsAgeVerified(true);
-        setShowAgeModal(false);
-        if (!isPrivacyAccepted) {
-            setShowPrivacyModal(true);
-        }
+        onAdultAccept();
     };
 
     const handleAgeNo = () => {
@@ -46,15 +30,8 @@ const ConsentOverlay = () => {
     };
 
     const handlePrivacyAccept = () => {
-        localStorage.setItem('isPrivacyAccepted', 'true');
-        setIsPrivacyAccepted(true);
-        setShowPrivacyModal(false);
+        onPrivacyAccept();
     };
-
-    // If on admin route or privacy policy page, we might not want to show this
-    if (location.pathname.startsWith('/admin') || location.pathname === '/privacy-policy') {
-        return null;
-    }
 
     if (!showAgeModal && !showPrivacyModal) return null;
 
@@ -81,7 +58,7 @@ const ConsentOverlay = () => {
                 </div>
             )}
 
-            {showPrivacyModal && !showAgeModal && (
+            {showPrivacyModal && (
                 <div style={styles.modal} className="fade-in">
                     <div style={styles.iconContainer}>
                         <AlertCircle size={48} color="var(--accent-color)" />

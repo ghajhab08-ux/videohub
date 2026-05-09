@@ -37,12 +37,13 @@ const VideoWatch = () => {
   const [relatedVideos, setRelatedVideos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  
-  // New States
   const [currentPage, setCurrentPage] = useState(1);
   const [isCommentsVisible, setIsCommentsVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const videosPerPage = 20;
+
+  const [comments, setComments] = useState([]);
+  const [commentText, setCommentText] = useState('');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 1024);
@@ -50,9 +51,42 @@ const VideoWatch = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const fetchComments = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/video/${id}/comments`);
+      const data = await res.json();
+      setComments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Fetch comments error:', err);
+    }
+  };
+
   const handleInteraction = async (action) => {
     if (!user) {
       setIsLoginModalOpen(true);
+      return;
+    }
+
+    if (action === 'Like') {
+      try {
+        const res = await fetch(`${API_BASE}/api/video/${id}/like`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('Video liked!');
+          // Refresh video data to show new like count
+          fetchVideoData();
+        } else {
+          alert(data.error || 'Failed to like video');
+        }
+      } catch (err) {
+        alert('Error liking video');
+      }
       return;
     }
 
@@ -61,14 +95,16 @@ const VideoWatch = () => {
       if (!reason) return;
 
       try {
-        const res = await fetch('http://localhost:4000/api/report', {
+        const res = await fetch(`${API_BASE}/api/report`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${user.token}`
+          },
           body: JSON.stringify({
             type: 'video',
             targetId: id,
-            reason,
-            reportedBy: user?.username || 'user'
+            reason
           })
         });
 
@@ -83,13 +119,40 @@ const VideoWatch = () => {
       return;
     }
 
-    alert(`You clicked ${action}`);
+    alert(`Action ${action} is not yet implemented with backend`);
   };
 
-  useEffect(() => {
-    setIsLoading(true);
+  const handleCommentSubmit = async (e) => {
+    if (e.key && e.key !== 'Enter') return;
+    if (!user) {
+      setIsLoginModalOpen(true);
+      return;
+    }
+    if (!commentText.trim()) return;
 
-    // Fetch video details
+    try {
+      const res = await fetch(`${API_BASE}/api/video/${id}/comment`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`
+        },
+        body: JSON.stringify({ text: commentText })
+      });
+
+      if (res.ok) {
+        setCommentText('');
+        fetchComments();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to post comment');
+      }
+    } catch (err) {
+      alert('Error posting comment');
+    }
+  };
+
+  const fetchVideoData = () => {
     fetch(`${API_BASE}/api/video/${id}`)
       .then(res => res.json())
       .then(data => {
@@ -97,21 +160,14 @@ const VideoWatch = () => {
         setIsLoading(false);
       })
       .catch(() => {
-        // Fallback demo data
-        setVideo({
-          id,
-          title: 'Demo Video',
-          description: 'Demo video description',
-          videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
-          views: '1.5M',
-          likes: '150K',
-          dislikes: '2K',
-          category: 'Demo',
-          uploadDate: 'Today',
-          thumbnail: 'https://picsum.photos/400/225'
-        });
         setIsLoading(false);
       });
+  };
+
+  useEffect(() => {
+    setIsLoading(true);
+    fetchVideoData();
+    fetchComments();
 
     // Fetch related videos
     fetch(`${API_BASE}/api/videos?related=${id}`)
@@ -120,7 +176,7 @@ const VideoWatch = () => {
       .catch(() => setRelatedVideos([]));
 
     window.scrollTo(0, 0);
-    setCurrentPage(1); // Reset page on video change
+    setCurrentPage(1); 
   }, [id]);
 
   const handlePageChange = (pageNum) => {
@@ -153,7 +209,7 @@ const VideoWatch = () => {
   const CommentsSection = () => (
     <div style={{ ...styles.comments, marginTop: isMobile ? '40px' : '0' }}>
       <div style={styles.commentsHeader}>
-        <h3>Comments</h3>
+        <h3>Comments ({comments.length})</h3>
         <button 
           id="comments-toggle-btn"
           style={styles.toggleBtn}
@@ -166,42 +222,56 @@ const VideoWatch = () => {
       {isCommentsVisible && (
         <div className="fade-in">
           <div style={styles.commentInputRow}>
-            <div style={styles.avatarMini}>U</div>
+            <div style={styles.avatarMini}>{user ? user.username[0].toUpperCase() : '?'}</div>
             <input
               type="text"
-              placeholder="Add a comment..."
+              placeholder={user ? "Add a comment..." : "Login to comment"}
               style={styles.commentInput}
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onKeyDown={handleCommentSubmit}
+              disabled={!user}
+              onClick={() => !user && setIsLoginModalOpen(true)}
             />
           </div>
 
           <div style={styles.commentList}>
-            <div style={styles.commentItem}>
-              <div style={styles.avatarMini}>A</div>
-              <div style={styles.commentBody}>
-                <div style={styles.commentAuthor}>User123 <span style={styles.commentDate}>2 days ago</span></div>
-                <div style={styles.commentText}>This is a great video! Keep it up.</div>
-                <div style={styles.commentActions}>
-                  <button style={styles.commentActionBtn} onClick={() => handleInteraction('Like')}>Like</button>
-                  <button style={styles.commentActionBtn} onClick={() => {
-                    const reason = prompt('Report comment for:');
-                    if (reason) {
-                      fetch('http://localhost:4000/api/report', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          type: 'comment',
-                          targetId: 'c123',
-                          reason,
-                          reportedBy: user?.username || 'user'
-                        })
-                      }).then(() => alert('Comment reported.'));
-                    }
-                  }}>Report</button>
+            {comments.map((comment, index) => (
+              <div key={comment.id || index} style={styles.commentItem}>
+                <div style={styles.avatarMini}>{comment.username ? comment.username[0].toUpperCase() : 'U'}</div>
+                <div style={styles.commentBody}>
+                  <div style={styles.commentAuthor}>{comment.username} <span style={styles.commentDate}>{new Date(comment.createdAt).toLocaleDateString()}</span></div>
+                  <div style={styles.commentText}>{comment.text}</div>
+                  <div style={styles.commentActions}>
+                    <button style={styles.commentActionBtn} onClick={() => handleInteraction('Like')}>Like</button>
+                    <button style={styles.commentActionBtn} onClick={() => {
+                      if (!user) {
+                        setIsLoginModalOpen(true);
+                        return;
+                      }
+                      const reason = prompt('Report comment for:');
+                      if (reason) {
+                        fetch(`${API_BASE}/api/report`, {
+                          method: 'POST',
+                          headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${user.token}`
+                          },
+                          body: JSON.stringify({
+                            type: 'comment',
+                            targetId: comment.id,
+                            reason
+                          })
+                        }).then(() => alert('Comment reported.'));
+                      }
+                    }}>Report</button>
+                  </div>
                 </div>
               </div>
-            </div>
+            ))}
+            {comments.length === 0 && <p style={styles.commentNotice}>No comments yet. Be the first to comment!</p>}
           </div>
-          <p style={styles.commentNotice}>Please login to post comments.</p>
+          {!user && <p style={styles.commentNotice}>Please login to post comments.</p>}
         </div>
       )}
     </div>

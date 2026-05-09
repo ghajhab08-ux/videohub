@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { API_BASE } from '../config';
 
 const AuthContext = createContext();
 
@@ -14,13 +15,13 @@ export const AuthProvider = ({ children }) => {
     const username = localStorage.getItem('username');
     
     if (token) {
-      // In a real app, we would verify the token with the backend here
       setUser({ token, username });
       setIsAdmin(role === 'admin');
     }
     
     setIsLoading(false);
   }, []);
+
 
   const login = (userData, role) => {
     localStorage.setItem('token', userData.token);

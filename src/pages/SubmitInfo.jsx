@@ -15,6 +15,12 @@ const SubmitInfo = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        
+        if (!user) {
+            alert('Authentication required to submit videos. Please login first.');
+            return;
+        }
+
         if (!formData.title || !formData.videoFile) {
             alert('Title and Video File are required');
             return;
@@ -26,10 +32,13 @@ const SubmitInfo = () => {
             data.append('title', formData.title);
             data.append('description', formData.description);
             data.append('video', formData.videoFile);
-            data.append('submittedBy', user?.username || 'guest');
+            data.append('submittedBy', user?.username || 'user');
 
             const res = await fetch(`${API_BASE}/api/submit-video-file`, {
                 method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${user.token}`
+                },
                 body: data
             });
 

@@ -5,13 +5,9 @@ const authMiddleware = (req, res, next) => {
 
     if (!authHeader) {
         return res.status(401).json({
-            error: 'Unauthorized: Authorization header missing'
+            error: 'Authentication required'
         });
     }
-
-    // Expected formats:
-    // 1) Bearer <JWT_TOKEN>
-    // 2) Bearer <ADMIN_PASSWORD> (dev shortcut)
 
     const parts = authHeader.split(' ');
 
@@ -23,16 +19,8 @@ const authMiddleware = (req, res, next) => {
 
     const token = parts[1];
 
-    // ✅ JWT AUTH
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        if (!decoded || decoded.role !== 'admin') {
-            return res.status(403).json({
-                error: 'Forbidden: Admin access required'
-            });
-        }
-
         req.user = decoded;
         next();
     } catch (err) {
@@ -43,4 +31,16 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
-module.exports = authMiddleware;
+const adminMiddleware = (req, res, next) => {
+    authMiddleware(req, res, () => {
+        if (req.user && req.user.role === 'admin') {
+            next();
+        } else {
+            return res.status(403).json({
+                error: 'Unauthorized action: Admin access required'
+            });
+        }
+    });
+};
+
+module.exports = { authMiddleware, adminMiddleware };

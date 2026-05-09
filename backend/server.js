@@ -8,11 +8,13 @@ const publicRoutes = require('./routes/public');
 const adminRoutes = require('./routes/admin');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 // Middleware
 const corsOptions = {
-    origin: process.env.CLIENT_URL || '*',
+    origin: process.env.CLIENT_URL,
+    credentials: true,
     optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
@@ -28,10 +30,16 @@ app.use('/api', publicRoutes);              // public routes (no auth)
 app.use('/api/admin', adminRoutes); // admin.js handles its own auth internally
 
 // Health check
-app.get('/', (req, res) => {
-    res.json({ status: 'VideoHub API is running', timestamp: new Date() });
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        service: 'VideoHub API',
+        timestamp: new Date()
+    });
 });
-
+app.get('/', (req, res) => {
+    res.send('VideoHub API Running');
+});
 // Error handling
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -39,7 +47,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
     console.log('Environment Variables Check:');
     console.log(`- ADMIN_USERNAME: ${process.env.ADMIN_USERNAME ? 'DEFINED' : 'MISSING'}`);
