@@ -7,16 +7,11 @@ const { v4: uuidv4 } = require('uuid');
 // const authMiddleware = require('../middleware/auth'); // Removed old import
 
 const VIDEOS_FILE = path.join(__dirname, '../data/videos.json');
-const SUBMISSIONS_FILE = path.join(__dirname, '../data/submissions.json');
-const REPORTS_FILE = path.join(__dirname, '../data/reports.json');
 const USERS_FILE = path.join(__dirname, '../data/users.json');
 
 const supabase = require('../utils/supabase');
 
-// Helpers - We'll keep these for now but might remove if unused later
-const getData = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
-const setData = (file, data) =>
-    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+// Local storage helpers removed - now using Supabase
 
 /**
  * POST /api/admin/login
@@ -169,10 +164,13 @@ router.post('/upload-video', async (req, res) => {
     }
 
     if (sourceType === 'bunny') {
-        const bunnyBaseUrl = 'https://pvideos-cdn.b-cdn.net/';
-        if (!videoUrl.startsWith(bunnyBaseUrl)) {
+        const bunnyBaseUrl = process.env.BUNNY_PULL_ZONE || 'https://pvideos-cdn.b-cdn.net/';
+        // Ensure bunnyBaseUrl ends with a slash for validation
+        const normalizedBase = bunnyBaseUrl.endsWith('/') ? bunnyBaseUrl : `${bunnyBaseUrl}/`;
+        
+        if (!videoUrl.startsWith(normalizedBase)) {
             return res.status(400).json({
-                error: `Invalid Video URL. Must start with ${bunnyBaseUrl}`
+                error: `Invalid Video URL. Must start with ${normalizedBase}`
             });
         }
     } else if (sourceType === 'embedded') {

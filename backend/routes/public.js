@@ -23,11 +23,7 @@ const upload = multer({
     limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
 });
 
-// Data file paths
-const VIDEOS_FILE = path.join(__dirname, '../data/videos.json');
-const SUBMISSIONS_FILE = path.join(__dirname, '../data/submissions.json');
-const REPORTS_FILE = path.join(__dirname, '../data/reports.json');
-
+// Data managed via Supabase
 const supabase = require('../utils/supabase');
 const { authMiddleware } = require('../middleware/auth'); // Correct destructuring
 

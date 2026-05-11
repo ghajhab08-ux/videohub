@@ -35,40 +35,99 @@ const ProtectedRoute = ({ children }) => {
 };
 
 function App() {
-  // Initialize state from localStorage immediately to avoid flickering
-  const [adultAccepted, setAdultAccepted] = useState(() => {
-    const saved = localStorage.getItem('adultAccepted');
-    console.log('[Consent] Initial adultAccepted:', saved);
-    return saved === 'true';
-  });
-
-  const [privacyAccepted, setPrivacyAccepted] = useState(() => {
-    const saved = localStorage.getItem('privacyAccepted');
-    console.log('[Consent] Initial privacyAccepted:', saved);
-    return saved === 'true';
-  });
-
-  // Track if consent is fully completed
-  const [isConsentComplete, setIsConsentComplete] = useState(adultAccepted && privacyAccepted);
+  const [loadingConsent, setLoadingConsent] = useState(true);
+  const [adultAccepted, setAdultAccepted] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   useEffect(() => {
-    console.log('[Consent] State check - Adult:', adultAccepted, 'Privacy:', privacyAccepted);
-    const complete = adultAccepted && privacyAccepted;
-    setIsConsentComplete(complete);
-    console.log('[Consent] Is complete:', complete);
-  }, [adultAccepted, privacyAccepted]);
+    // 1. Initial validation with debug logging for mobile stability
+    const userAgent = navigator.userAgent;
+    const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+    
+    console.log('[Consent Debug] Initializing consent check...', {
+      device: isMobileDevice ? 'Mobile' : 'Desktop',
+      userAgent,
+      time: new Date().toISOString()
+    });
+    
+    const checkConsent = () => {
+      try {
+        const adult = localStorage.getItem('adultAccepted');
+        const privacy = localStorage.getItem('privacyAccepted');
+        
+        console.log('[Consent Debug] localStorage values found:', { adult, privacy });
+        
+        setAdultAccepted(adult === 'true');
+        setPrivacyAccepted(privacy === 'true');
+        
+        console.log('[Consent Debug] Decision:', { 
+          showPopups: adult !== 'true' || privacy !== 'true',
+          adultAccepted: adult === 'true', 
+          privacyAccepted: privacy === 'true' 
+        });
+      } catch (e) {
+        console.error('[Consent Debug] localStorage access error:', e);
+        // Fallback for private mode / restricted environments
+        setAdultAccepted(false);
+        setPrivacyAccepted(false);
+      } finally {
+        // Ensure the loading screen stays visible long enough to prevent flickering
+        // and allow the state to settle before rendering the app.
+        setTimeout(() => {
+          setLoadingConsent(false);
+          console.log('[Consent Debug] Loading gate released');
+        }, 100);
+      }
+    };
+
+    checkConsent();
+  }, []);
 
   const handleAdultAccept = () => {
-    console.log('[Consent] Action: Accepting adult content');
+    console.log('[Consent Action] User accepted adult content');
     localStorage.setItem('adultAccepted', 'true');
     setAdultAccepted(true);
   };
 
   const handlePrivacyAccept = () => {
-    console.log('[Consent] Action: Accepting privacy policy');
+    console.log('[Consent Action] User accepted privacy policy');
     localStorage.setItem('privacyAccepted', 'true');
     setPrivacyAccepted(true);
   };
+
+  // The app only renders once loadingConsent is false
+  if (loadingConsent) {
+    return (
+      <div style={{ 
+        background: '#000', 
+        height: '100vh', 
+        width: '100vw', 
+        display: 'flex', 
+        flexDirection: 'column',
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        color: '#fff',
+        fontFamily: 'Inter, system-ui, sans-serif'
+      }}>
+        <div style={{ 
+          width: '40px', 
+          height: '40px', 
+          border: '3px solid rgba(255,255,255,0.1)', 
+          borderTop: '3px solid var(--accent-color, #ff0000)', 
+          borderRadius: '50%', 
+          animation: 'spin 1s linear infinite',
+          marginBottom: '20px'
+        }}></div>
+        <p style={{ opacity: 0.6, fontSize: '14px', letterSpacing: '1px' }}>VERIFYING ACCESS...</p>
+        <style>{`
+          @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Derived state to ensure consistency across renders
+  const isConsentComplete = adultAccepted && privacyAccepted;
 
   return (
     <Router>

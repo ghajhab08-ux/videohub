@@ -2,17 +2,22 @@ const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+// Handle both names for flexibility during deployment
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('CRITICAL: Supabase credentials missing from environment!');
+}
 
 let supabase = null;
 
-if (supabaseUrl && supabaseServiceKey) {
-  try {
+try {
+  if (supabaseUrl && supabaseServiceKey) {
     supabase = createClient(supabaseUrl, supabaseServiceKey);
-    console.log("SUPABASE LOADED SUCCESSFULLY");
-  } catch (error) {
-    console.log("SUPABASE FAILED (non-fatal)");
+    console.log('✅ SUPABASE CONNECTION INITIALIZED');
   }
+} catch (error) {
+  console.error('❌ SUPABASE INITIALIZATION FAILED:', error.message);
 }
 
 module.exports = supabase;
