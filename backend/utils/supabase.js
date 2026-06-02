@@ -11,9 +11,15 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 let supabase = null;
 
+const WebSocket = require('ws');
+
 try {
   if (supabaseUrl && supabaseServiceKey) {
-    supabase = createClient(supabaseUrl, supabaseServiceKey);
+    supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      realtime: {
+        transport: WebSocket
+      }
+    });
     console.log('✅ SUPABASE CONNECTION INITIALIZED');
   }
 } catch (error) {
