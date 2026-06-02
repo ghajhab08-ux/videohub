@@ -13,11 +13,11 @@ const adminRoutes = require('./routes/admin');
 const app = express();
 
 // Railway trust proxy
-app.set('trust proxy', 1);// redeploy khan is back bb lolly
+app.set('trust proxy', 1);
 
 // Security Middleware
 app.use(helmet({
-    crossOriginResourcePolicy: false, // Allow cross-origin media
+    crossOriginResourcePolicy: false,
 }));
 
 // Rate Limiting
