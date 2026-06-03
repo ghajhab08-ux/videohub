@@ -33,7 +33,7 @@ app.use(morgan('dev'));
 
 // CORS Configuration
 const allowedOrigins = [
-    'https://webforassad.vercel.app',
+    'https://videohub-seven.vercel.app',
     'http://localhost:5173',
     'http://localhost:3000',
     'http://localhost:8080',
