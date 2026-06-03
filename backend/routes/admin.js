@@ -427,9 +427,7 @@ router.put('/report/:id', async (req, res) => {
     }
 });
 
-/**
- * DELETE /api/admin/report/:id
- */
+
 router.delete('/report/:id', async (req, res) => {
     try {
         const { error } = await supabase
