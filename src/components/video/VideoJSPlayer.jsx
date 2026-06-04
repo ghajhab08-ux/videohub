@@ -32,6 +32,9 @@ const VideoJSPlayer = (props) => {
       const player = playerRef.current;
       player.autoplay(options.autoplay);
       player.src(options.sources);
+      if (options.poster) {
+        player.poster(options.poster);
+      }
     }
   }, [options, videoRef]);
 

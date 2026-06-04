@@ -13,6 +13,7 @@ import LoginModal from '../components/common/LoginModal';
 import { useAuth } from '../context/AuthContext';
 import TopAdBanner from '../components/common/TopAdBanner';
 import VideoJSPlayer from '../components/video/VideoJSPlayer';
+import { generateVideoThumbnail } from '../utils/videoThumbnail';
 import { API_BASE } from '../config';
 
 const getEmbedUrl = (url) => {
@@ -34,6 +35,7 @@ const VideoWatch = () => {
   const { user } = useAuth();
 
   const [video, setVideo] = useState(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState(null);
   const [relatedVideos, setRelatedVideos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -157,6 +159,12 @@ const VideoWatch = () => {
       .then(res => res.json())
       .then(data => {
         setVideo(data);
+        setThumbnailUrl(data.thumbnail);
+        if (!data.thumbnail && data.videoUrl) {
+          generateVideoThumbnail(data.videoUrl).then(url => {
+            if (url) setThumbnailUrl(url);
+          });
+        }
         setIsLoading(false);
       })
       .catch(() => {
@@ -309,6 +317,7 @@ const VideoWatch = () => {
                     controls: true,
                     responsive: true,
                     fluid: true,
+                    poster: thumbnailUrl,
                     disablePictureInPicture: false,
                     sources: [{
                       src: video.videoUrl,

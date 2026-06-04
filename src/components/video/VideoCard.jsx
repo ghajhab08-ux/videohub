@@ -1,12 +1,27 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Play } from 'lucide-react';
+import { generateVideoThumbnail } from '../../utils/videoThumbnail';
 
 const VideoCard = ({ video }) => {
+    const [thumbnailUrl, setThumbnailUrl] = useState(video.thumbnail);
+
+    useEffect(() => {
+        if (!video.thumbnail && video.videoUrl) {
+            let isMounted = true;
+            generateVideoThumbnail(video.videoUrl).then((url) => {
+                if (isMounted && url) {
+                    setThumbnailUrl(url);
+                }
+            });
+            return () => { isMounted = false; };
+        }
+    }, [video.thumbnail, video.videoUrl]);
+
     return (
         <Link to={`/preroll/${video.id}`} style={styles.card}>
             <div style={styles.thumbnailContainer}>
-                <img src={video.thumbnail} alt={video.title} style={styles.thumbnail} />
+                <img src={thumbnailUrl || 'https://via.placeholder.com/640x360.png?text=Loading...'} alt={video.title} style={styles.thumbnail} />
                 <span style={styles.duration}>{video.duration}</span>
                 <div style={styles.overlay}>
                     <Play size={40} color="#fff" fill="#fff" />
