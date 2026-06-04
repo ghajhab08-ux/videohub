@@ -1,5 +1,37 @@
 export const generateVideoThumbnail = (videoUrl) => {
     return new Promise((resolve, reject) => {
+        if (!videoUrl) {
+            resolve(null);
+            return;
+        }
+
+        // Check for YouTube
+        const ytMatch = videoUrl.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+        if (ytMatch) {
+            const ytId = ytMatch[1];
+            // Resolve to the high quality YouTube thumbnail
+            resolve(`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`);
+            return;
+        }
+
+        // Check for Vimeo
+        const vimeoMatch = videoUrl.match(/(?:vimeo\.com\/|player\.vimeo\.com\/video\/)([0-9]+)/);
+        if (vimeoMatch) {
+            const vimeoId = vimeoMatch[1];
+            fetch(`https://vimeo.com/api/v2/video/${vimeoId}.json`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data[0] && data[0].thumbnail_large) {
+                        resolve(data[0].thumbnail_large);
+                    } else {
+                        resolve(null);
+                    }
+                })
+                .catch(() => resolve(null));
+            return;
+        }
+
+        // Fallback to Canvas extraction for native video streams
         const video = document.createElement('video');
         video.src = videoUrl;
         video.crossOrigin = 'anonymous'; // Important to avoid CORS issues with canvas
