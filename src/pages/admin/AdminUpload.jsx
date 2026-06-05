@@ -39,8 +39,8 @@ const AdminUpload = () => {
     const handleUpload = (e) => {
         e.preventDefault();
 
-        if (!formData.title || formData.categories.length === 0) {
-            return setError('Title and at least one Category are required');
+        if (!formData.title) {
+            return setError('Title is required');
         }
 
         if (formData.sourceType === 'bunny' && !videoFile) {
@@ -224,7 +224,7 @@ const AdminUpload = () => {
                             <option value="unlisted">Unlisted</option>
                         </select>
 
-                        <label style={styles.label}>Select Categories *</label>
+                        <label style={styles.label}>Select Categories (Optional)</label>
                         <div style={styles.categoryGrid}>
                             {CATEGORIES.filter(c => c !== 'All').map(cat => (
                                 <label key={cat} style={styles.checkboxLabel}>

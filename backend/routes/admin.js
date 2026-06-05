@@ -300,15 +300,43 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
             upload_date: new Date().toISOString()
         };
 
-        const { data, error } = await supabase
+        // First try inserting with all fields
+        let data, error;
+        const insertRes = await supabase
             .from('videohubweb')
             .insert([newVideo])
             .select()
             .single();
+            
+        data = insertRes.data;
+        error = insertRes.error;
+
+        // If insert fails due to missing columns (error code 42703), try again without new columns
+        if (error && error.code === '42703') {
+            console.warn('Supabase Insert Warning: New columns not found, falling back to original schema.');
+            const fallbackVideo = {
+                title: newVideo.title,
+                description: newVideo.description,
+                category: newVideo.category,
+                videoUrl: newVideo.videoUrl,
+                thumbnail: newVideo.thumbnail,
+                sourceType: newVideo.sourceType,
+                views: newVideo.views,
+                rating: newVideo.rating,
+                createdAt: newVideo.createdAt
+            };
+            const fallbackRes = await supabase
+                .from('videohubweb')
+                .insert([fallbackVideo])
+                .select()
+                .single();
+            data = fallbackRes.data;
+            error = fallbackRes.error;
+        }
 
         if (error) {
             console.error('Supabase Insert Error:', error);
-            return res.status(500).json({ error: 'Failed to save video metadata to database. Check if schema columns were added.' });
+            return res.status(500).json({ error: 'Failed to save video metadata to database.' });
         }
 
         res.json({
@@ -434,12 +462,27 @@ router.put('/video/:id', async (req, res) => {
             ...(req.body.status && { status: req.body.status })
         };
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from('videohubweb')
             .update(updateData)
             .eq('id', id)
             .select()
             .single();
+
+        if (error && error.code === '42703' && req.body.status) {
+            console.warn('Supabase Update Warning: Status column not found, falling back.');
+            const fallbackData = { ...updateData };
+            delete fallbackData.status;
+            
+            const fallbackRes = await supabase
+                .from('videohubweb')
+                .update(fallbackData)
+                .eq('id', id)
+                .select()
+                .single();
+            data = fallbackRes.data;
+            error = fallbackRes.error;
+        }
 
         if (error) throw error;
 
