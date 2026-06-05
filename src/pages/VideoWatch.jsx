@@ -202,6 +202,34 @@ const VideoWatch = () => {
 
   const totalPages = Math.max(1, Math.ceil(relatedVideos.length / videosPerPage) || 5);
 
+  const playerOptions = React.useMemo(() => {
+    if (!video || !video.videoUrl) return null;
+    return {
+      autoplay: true,
+      controls: true,
+      responsive: true,
+      fluid: true,
+      poster: thumbnailUrl || '',
+      disablePictureInPicture: false,
+      sources: [{
+        src: video.videoUrl,
+        type: video.videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'
+      }],
+      controlBar: {
+        children: [
+          'playToggle',
+          'volumePanel',
+          'currentTimeDisplay',
+          'timeDivider',
+          'durationDisplay',
+          'progressControl',
+          'remainingTimeDisplay',
+          'fullscreenToggle',
+        ],
+      },
+    };
+  }, [video?.videoUrl, thumbnailUrl]);
+
   if (isLoading) {
     return (
       <div style={styles.loading}>Loading video...</div>
@@ -312,30 +340,7 @@ const VideoWatch = () => {
                 />
               ) : (
                 <VideoJSPlayer 
-                  options={{
-                    autoplay: true,
-                    controls: true,
-                    responsive: true,
-                    fluid: true,
-                    poster: thumbnailUrl,
-                    disablePictureInPicture: false,
-                    sources: [{
-                      src: video.videoUrl,
-                      type: video.videoUrl.includes('.m3u8') ? 'application/x-mpegURL' : 'video/mp4'
-                    }],
-                    controlBar: {
-                      children: [
-                        'playToggle',
-                        'volumePanel',
-                        'currentTimeDisplay',
-                        'timeDivider',
-                        'durationDisplay',
-                        'progressControl',
-                        'remainingTimeDisplay',
-                        'fullscreenToggle',
-                      ],
-                    },
-                  }} 
+                  options={playerOptions} 
                 />
               )
             ) : (

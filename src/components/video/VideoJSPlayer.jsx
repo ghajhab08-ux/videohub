@@ -7,7 +7,13 @@ const VideoJSPlayer = (props) => {
   const playerRef = useRef(null);
   const { options, onReady } = props;
 
+  const prevSrc = useRef('');
+  const prevPoster = useRef('');
+
   useEffect(() => {
+    const newSrc = options.sources?.[0]?.src || '';
+    const newPoster = options.poster || '';
+
     // Make sure Video.js player is only initialized once
     if (!playerRef.current) {
       // The Video.js player needs to be _inside_ the component el for React 18 Strict Mode. 
@@ -26,14 +32,25 @@ const VideoJSPlayer = (props) => {
         e.preventDefault();
       });
 
-      // You could update an existing player in the `else` block here
-      // on prop change, for example:
+      prevSrc.current = newSrc;
+      prevPoster.current = newPoster;
     } else {
       const player = playerRef.current;
-      player.autoplay(options.autoplay);
-      player.src(options.sources);
-      if (options.poster) {
-        player.poster(options.poster);
+      
+      if (options.autoplay !== undefined) {
+        player.autoplay(options.autoplay);
+      }
+      
+      // Only update source if it actually changed
+      if (newSrc && newSrc !== prevSrc.current) {
+        player.src(options.sources);
+        prevSrc.current = newSrc;
+      }
+      
+      // Only update poster if it actually changed
+      if (newPoster && newPoster !== prevPoster.current) {
+        player.poster(newPoster);
+        prevPoster.current = newPoster;
       }
     }
   }, [options, videoRef]);
