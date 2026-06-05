@@ -13,7 +13,8 @@ const VideoJSPlayer = ({ options }) => {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
   const progressRef = useRef(null);
-  const hideControlsTimer = useRef(null);
+  const hideTimer = useRef(null);
+  const isDragging = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -22,174 +23,172 @@ const VideoJSPlayer = ({ options }) => {
   const [muted, setMuted] = useState(false);
   const [buffered, setBuffered] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [showVolume, setShowVolume] = useState(false);
+  const [showVolSlider, setShowVolSlider] = useState(false);
 
   const src = options?.sources?.[0]?.src;
   const poster = options?.poster;
 
-  // Auto-hide controls
-  const resetHideTimer = useCallback(() => {
-    setShowControls(true);
-    if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current);
-    if (playing) {
-      hideControlsTimer.current = setTimeout(() => setShowControls(false), 3000);
-    }
-  }, [playing]);
+  /* ── helpers ─────────────────────────────────── */
+  const showControls = useCallback(() => {
+    setControlsVisible(true);
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setControlsVisible(false), 3000);
+  }, []);
 
-  useEffect(() => {
-    resetHideTimer();
-    return () => { if (hideControlsTimer.current) clearTimeout(hideControlsTimer.current); };
-  }, [playing, resetHideTimer]);
+  const togglePlay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (v.paused || v.ended) { v.play().catch(() => {}); }
+    else { v.pause(); }
+  }, []);
 
-  // Load source when it changes
+  /* ── load source ─────────────────────────────── */
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !src) return;
-    video.src = src;
-    if (poster) video.poster = poster;
-    video.load();
+    const v = videoRef.current;
+    if (!v || !src) return;
+    v.src = src;
+    if (poster) v.poster = poster;
+    v.load();
     setCurrentTime(0);
     setDuration(0);
     setIsLoading(true);
     setPlaying(false);
-  }, [src, poster]);
-
-  // Autoplay
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !src) return;
     if (options?.autoplay) {
-      video.play().catch(() => {});
+      const onCanPlay = () => { v.play().catch(() => {}); v.removeEventListener('canplay', onCanPlay); };
+      v.addEventListener('canplay', onCanPlay);
     }
-  }, [src, options?.autoplay]);
+  }, [src]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Video event handlers
+  /* ── video events ────────────────────────────── */
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    const v = videoRef.current;
+    if (!v) return;
 
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPlay       = () => setPlaying(true);
+    const onPause      = () => setPlaying(false);
+    const onEnded      = () => setPlaying(false);
     const onTimeUpdate = () => {
-      setCurrentTime(video.currentTime);
-      if (video.buffered.length > 0) {
-        setBuffered(video.buffered.end(video.buffered.length - 1));
-      }
+      setCurrentTime(v.currentTime);
+      if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1));
     };
-    const onLoadedMetadata = () => {
-      setDuration(video.duration);
-      setIsLoading(false);
-    };
+    const onMeta    = () => { setDuration(v.duration); setIsLoading(false); };
     const onWaiting = () => setIsLoading(true);
     const onCanPlay = () => setIsLoading(false);
-    const onVolumeChange = () => {
-      setVolume(video.volume);
-      setMuted(video.muted);
-    };
+    const onVolume  = () => { setVolume(v.volume); setMuted(v.muted); };
 
-    video.addEventListener('play', onPlay);
-    video.addEventListener('pause', onPause);
-    video.addEventListener('timeupdate', onTimeUpdate);
-    video.addEventListener('loadedmetadata', onLoadedMetadata);
-    video.addEventListener('waiting', onWaiting);
-    video.addEventListener('canplay', onCanPlay);
-    video.addEventListener('volumechange', onVolumeChange);
+    v.addEventListener('play',        onPlay);
+    v.addEventListener('pause',       onPause);
+    v.addEventListener('ended',       onEnded);
+    v.addEventListener('timeupdate',  onTimeUpdate);
+    v.addEventListener('loadedmetadata', onMeta);
+    v.addEventListener('waiting',     onWaiting);
+    v.addEventListener('canplay',     onCanPlay);
+    v.addEventListener('volumechange', onVolume);
 
     return () => {
-      video.removeEventListener('play', onPlay);
-      video.removeEventListener('pause', onPause);
-      video.removeEventListener('timeupdate', onTimeUpdate);
-      video.removeEventListener('loadedmetadata', onLoadedMetadata);
-      video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('canplay', onCanPlay);
-      video.removeEventListener('volumechange', onVolumeChange);
+      v.removeEventListener('play',        onPlay);
+      v.removeEventListener('pause',       onPause);
+      v.removeEventListener('ended',       onEnded);
+      v.removeEventListener('timeupdate',  onTimeUpdate);
+      v.removeEventListener('loadedmetadata', onMeta);
+      v.removeEventListener('waiting',     onWaiting);
+      v.removeEventListener('canplay',     onCanPlay);
+      v.removeEventListener('volumechange', onVolume);
     };
   }, []);
 
-  // Fullscreen change detection
+  /* ── keyboard shortcuts ──────────────────────── */
   useEffect(() => {
-    const onFSChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
+    const onKey = (e) => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyF','KeyM'].includes(e.code)) {
+        e.preventDefault();
+      }
+      if (e.code === 'Space')       togglePlay();
+      if (e.code === 'ArrowLeft')   v.currentTime = Math.max(v.currentTime - 10, 0);
+      if (e.code === 'ArrowRight')  v.currentTime = Math.min(v.currentTime + 10, v.duration || 0);
+      if (e.code === 'ArrowUp')     v.volume = Math.min(v.volume + 0.1, 1);
+      if (e.code === 'ArrowDown')   v.volume = Math.max(v.volume - 0.1, 0);
+      if (e.code === 'KeyM')        v.muted = !v.muted;
+      if (e.code === 'KeyF')        toggleFullscreen();
     };
-    document.addEventListener('fullscreenchange', onFSChange);
-    return () => document.removeEventListener('fullscreenchange', onFSChange);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [togglePlay]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── fullscreen detection ────────────────────── */
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
   }, []);
 
-  const togglePlay = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (video.paused) video.play();
-    else video.pause();
-  };
-
-  const handleSeek = (e) => {
-    const video = videoRef.current;
+  /* ── seeking helpers ─────────────────────────── */
+  const seekTo = (e) => {
+    const v = videoRef.current;
     const bar = progressRef.current;
-    if (!video || !bar || !duration) return;
+    if (!v || !bar || !duration) return;
     const rect = bar.getBoundingClientRect();
-    const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
-    video.currentTime = ratio * duration;
+    const ratio = Math.max(0, Math.min((e.clientX - rect.left) / rect.width, 1));
+    v.currentTime = ratio * duration;
     setCurrentTime(ratio * duration);
   };
 
-  const handleVolume = (e) => {
-    const video = videoRef.current;
-    if (!video) return;
-    const val = parseFloat(e.target.value);
-    video.volume = val;
-    video.muted = val === 0;
+  const onProgressMouseDown = (e) => {
+    e.stopPropagation();
+    isDragging.current = true;
+    seekTo(e);
+    const onMove = (ev) => { if (isDragging.current) seekTo(ev); };
+    const onUp   = () => { isDragging.current = false; document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
   };
 
-  const toggleMute = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = !video.muted;
+  const skip = (s) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = Math.max(0, Math.min(v.currentTime + s, duration || 0));
+  };
+
+  const toggleMute = () => { const v = videoRef.current; if (v) v.muted = !v.muted; };
+
+  const handleVolumeChange = (e) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const val = parseFloat(e.target.value);
+    v.volume = val;
+    v.muted  = val === 0;
   };
 
   const toggleFullscreen = () => {
-    const el = containerRef.current;
-    if (!el) return;
-    if (!document.fullscreenElement) el.requestFullscreen();
+    if (!document.fullscreenElement) containerRef.current?.requestFullscreen();
     else document.exitFullscreen();
   };
 
-  const skip = (seconds) => {
-    const video = videoRef.current;
-    if (!video || !duration) return;
-    video.currentTime = Math.min(Math.max(video.currentTime + seconds, 0), duration);
-  };
+  /* ── derived values ──────────────────────────── */
+  const playedPct   = duration ? (currentTime / duration) * 100 : 0;
+  const bufferedPct = duration ? (buffered   / duration) * 100 : 0;
+  const volIcon = muted || volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊';
 
-  const playedPct = duration ? (currentTime / duration) * 100 : 0;
-  const bufferedPct = duration ? (buffered / duration) * 100 : 0;
-
-  const volumeIcon = muted || volume === 0 ? '🔇' : volume < 0.5 ? '🔉' : '🔊';
-
+  /* ── render ──────────────────────────────────── */
   return (
     <div
       ref={containerRef}
-      onMouseMove={resetHideTimer}
-      onMouseLeave={() => playing && setShowControls(false)}
-      onClick={togglePlay}
+      style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#000', borderRadius: '12px', overflow: 'hidden', userSelect: 'none' }}
+      onMouseMove={showControls}
+      onMouseEnter={showControls}
       onContextMenu={(e) => e.preventDefault()}
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        backgroundColor: '#000',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        cursor: showControls ? 'default' : 'none',
-        userSelect: 'none',
-      }}
     >
-      {/* Native video element */}
+      {/* Native <video> – no browser controls, click handled below */}
       <video
         ref={videoRef}
-        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain' }}
+        style={{ width: '100%', height: '100%', display: 'block', objectFit: 'contain', cursor: 'pointer' }}
         preload="auto"
         playsInline
+        onClick={togglePlay}
       />
 
       {/* Loading spinner */}
@@ -199,214 +198,135 @@ const VideoJSPlayer = ({ options }) => {
         </div>
       )}
 
-      {/* Controls overlay */}
+      {/* Large centered play/pause overlay (click-through area) */}
+      {!isLoading && (
+        <div
+          style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2, pointerEvents: 'none' }}
+        >
+          {!playing && (
+            <div style={S.bigPlay}>
+              <PlayIcon size={36} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Controls bar – always above video, stop propagation so it doesn't toggle play */}
       <div
-        style={{
-          ...S.controls,
-          opacity: showControls ? 1 : 0,
-          pointerEvents: showControls ? 'auto' : 'none',
-          transition: 'opacity 0.3s ease',
-        }}
+        style={{ ...S.controlsWrap, opacity: controlsVisible ? 1 : 0, transition: 'opacity 0.3s' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Gradient fade */}
+        {/* Dark gradient */}
         <div style={S.gradient} />
 
-        {/* Progress bar */}
+        {/* Progress / seek bar */}
         <div
           ref={progressRef}
-          style={S.progressBar}
-          onClick={handleSeek}
-          onMouseDown={(e) => {
-            handleSeek(e);
-            const onMove = (ev) => handleSeek(ev);
-            const onUp = () => {
-              document.removeEventListener('mousemove', onMove);
-              document.removeEventListener('mouseup', onUp);
-            };
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-          }}
+          style={S.progressTrack}
+          onMouseDown={onProgressMouseDown}
         >
-          {/* Buffered */}
-          <div style={{ ...S.progressFill, width: `${bufferedPct}%`, backgroundColor: 'rgba(255,255,255,0.3)' }} />
-          {/* Played */}
-          <div style={{ ...S.progressFill, width: `${playedPct}%`, backgroundColor: 'var(--accent-color, #ff9000)' }} />
-          {/* Thumb */}
+          <div style={{ ...S.bar, width: `${bufferedPct}%`, background: 'rgba(255,255,255,0.25)' }} />
+          <div style={{ ...S.bar, width: `${playedPct}%`,   background: 'var(--accent-color,#ff9000)' }} />
           <div style={{ ...S.thumb, left: `${playedPct}%` }} />
         </div>
 
-        {/* Bottom controls row */}
+        {/* Bottom row */}
         <div style={S.row}>
-          {/* Left: play, skip, time */}
-          <div style={S.left}>
-            <button style={S.btn} onClick={togglePlay} title={playing ? 'Pause' : 'Play'}>
+          {/* Left */}
+          <div style={S.side}>
+            <button style={S.btn} onClick={togglePlay} title={playing ? 'Pause (Space)' : 'Play (Space)'}>
               {playing ? <PauseIcon /> : <PlayIcon />}
             </button>
-            <button style={S.btn} onClick={() => skip(-10)} title="Rewind 10s">
+            <button style={S.btn} onClick={() => skip(-10)} title="Back 10s (←)">
               <RewindIcon />
             </button>
-            <button style={S.btn} onClick={() => skip(10)} title="Forward 10s">
+            <button style={S.btn} onClick={() => skip(10)} title="Forward 10s (→)">
               <ForwardIcon />
             </button>
 
             {/* Volume */}
-            <div
-              style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}
-              onMouseEnter={() => setShowVolume(true)}
-              onMouseLeave={() => setShowVolume(false)}
-            >
-              <button style={S.btn} onClick={toggleMute} title="Toggle mute">
-                <span style={{ fontSize: '16px' }}>{volumeIcon}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+              onMouseEnter={() => setShowVolSlider(true)}
+              onMouseLeave={() => setShowVolSlider(false)}>
+              <button style={S.btn} onClick={toggleMute} title="Mute (M)">
+                <span style={{ fontSize: 16 }}>{volIcon}</span>
               </button>
-              <div style={{
-                ...S.volumeSliderWrap,
-                width: showVolume ? '80px' : '0',
-                opacity: showVolume ? 1 : 0,
-                overflow: 'hidden',
-                transition: 'width 0.2s, opacity 0.2s',
-              }}>
-                <input
-                  type="range"
-                  min="0" max="1" step="0.02"
-                  value={muted ? 0 : volume}
-                  onChange={handleVolume}
-                  style={S.volumeInput}
-                />
+              <div style={{ width: showVolSlider ? 72 : 0, overflow: 'hidden', transition: 'width .2s' }}>
+                <input type="range" min="0" max="1" step="0.02"
+                  value={muted ? 0 : volume} onChange={handleVolumeChange}
+                  style={{ width: 70, accentColor: 'var(--accent-color,#ff9000)', cursor: 'pointer' }} />
               </div>
             </div>
 
-            <span style={S.time}>
-              {formatTime(currentTime)} / {formatTime(duration)}
-            </span>
+            <span style={S.time}>{formatTime(currentTime)} / {formatTime(duration)}</span>
           </div>
 
-          {/* Right: fullscreen */}
-          <div style={S.right}>
-            <button style={S.btn} onClick={toggleFullscreen} title="Fullscreen">
+          {/* Right */}
+          <div style={S.side}>
+            <button style={S.btn} onClick={toggleFullscreen} title="Fullscreen (F)">
               {isFullscreen ? <ExitFSIcon /> : <FSIcon />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Big play button in center when paused */}
-      {!playing && !isLoading && (
-        <div style={S.bigPlayWrap} onClick={togglePlay}>
-          <div style={S.bigPlay}>
-            <PlayIcon size={32} />
-          </div>
-        </div>
-      )}
-
       <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes vhSpin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
 };
 
-/* ── Inline SVG icons ─────────────────────────── */
-const PlayIcon = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <polygon points="5,3 19,12 5,21" />
-  </svg>
-);
-const PauseIcon = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
-    <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
-  </svg>
-);
-const RewindIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/>
-  </svg>
-);
-const ForwardIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
-  </svg>
-);
-const FSIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
-    <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
-  </svg>
-);
-const ExitFSIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="8 3 3 3 3 8"/><polyline points="21 8 21 3 16 3"/>
-    <polyline points="3 16 3 21 8 21"/><polyline points="16 21 21 21 21 16"/>
-  </svg>
-);
+/* ── SVG icons ───────────────────────────────── */
+const PlayIcon  = ({ size = 20 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>;
+const PauseIcon = ({ size = 20 }) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>;
+const RewindIcon  = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z"/></svg>;
+const ForwardIcon = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>;
+const FSIcon    = () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>;
+const ExitFSIcon= () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="8 3 3 3 3 8"/><polyline points="21 8 21 3 16 3"/><polyline points="3 16 3 21 8 21"/><polyline points="16 21 21 21 21 16"/></svg>;
 
-/* ── Styles ────────────────────────────────────── */
+/* ── Styles ──────────────────────────────────── */
 const S = {
-  controls: {
+  controlsWrap: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
-    padding: '0 12px 10px',
-    display: 'flex', flexDirection: 'column', gap: '6px',
+    padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 6, zIndex: 10,
+    pointerEvents: 'auto',
   },
   gradient: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: '120px',
-    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 130,
+    background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%)',
     pointerEvents: 'none', zIndex: -1,
   },
-  progressBar: {
-    position: 'relative', height: '4px', borderRadius: '2px',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    cursor: 'pointer', marginBottom: '2px',
-    transition: 'height 0.15s',
+  progressTrack: {
+    position: 'relative', height: 5, borderRadius: 3,
+    background: 'rgba(255,255,255,0.15)', cursor: 'pointer', marginBottom: 2,
   },
-  progressFill: {
-    position: 'absolute', top: 0, left: 0, height: '100%',
-    borderRadius: '2px', pointerEvents: 'none',
-  },
+  bar: { position: 'absolute', top: 0, left: 0, height: '100%', borderRadius: 3, pointerEvents: 'none' },
   thumb: {
-    position: 'absolute', top: '50%', transform: 'translate(-50%, -50%)',
-    width: '13px', height: '13px', borderRadius: '50%',
-    backgroundColor: 'var(--accent-color, #ff9000)',
-    boxShadow: '0 0 4px rgba(0,0,0,0.6)',
-    pointerEvents: 'none',
+    position: 'absolute', top: '50%', transform: 'translate(-50%,-50%)',
+    width: 14, height: 14, borderRadius: '50%',
+    background: 'var(--accent-color,#ff9000)',
+    boxShadow: '0 0 5px rgba(0,0,0,.7)', pointerEvents: 'none',
   },
-  row: {
-    display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', gap: '8px',
-  },
-  left: { display: 'flex', alignItems: 'center', gap: '4px' },
-  right: { display: 'flex', alignItems: 'center', gap: '4px' },
+  row:  { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  side: { display: 'flex', alignItems: 'center', gap: 2 },
   btn: {
-    background: 'none', border: 'none', color: '#fff',
-    cursor: 'pointer', padding: '6px', display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
-    opacity: 1, borderRadius: '4px',
+    background: 'none', border: 'none', color: '#fff', cursor: 'pointer',
+    padding: '6px', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
-  time: { color: '#fff', fontSize: '13px', marginLeft: '4px', whiteSpace: 'nowrap' },
-  volumeSliderWrap: { display: 'flex', alignItems: 'center' },
-  volumeInput: { width: '100%', accentColor: 'var(--accent-color, #ff9000)', cursor: 'pointer' },
-  spinnerWrap: {
-    position: 'absolute', inset: 0, display: 'flex',
-    alignItems: 'center', justifyContent: 'center', zIndex: 5,
-  },
+  time: { color: '#fff', fontSize: 13, marginLeft: 6, whiteSpace: 'nowrap' },
+  spinnerWrap: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5 },
   spinner: {
-    width: '44px', height: '44px', borderRadius: '50%',
-    border: '4px solid rgba(255,255,255,0.2)',
-    borderTop: '4px solid var(--accent-color, #ff9000)',
-    animation: 'spin 0.8s linear infinite',
-  },
-  bigPlayWrap: {
-    position: 'absolute', inset: 0, display: 'flex',
-    alignItems: 'center', justifyContent: 'center',
-    cursor: 'pointer', zIndex: 3,
+    width: 46, height: 46, borderRadius: '50%',
+    border: '4px solid rgba(255,255,255,0.15)',
+    borderTop: '4px solid var(--accent-color,#ff9000)',
+    animation: 'vhSpin .8s linear infinite',
   },
   bigPlay: {
-    width: '72px', height: '72px', borderRadius: '50%',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    backdropFilter: 'blur(4px)',
-    border: '2px solid rgba(255,255,255,0.3)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    color: '#fff',
-    transition: 'transform 0.15s, background 0.15s',
+    width: 76, height: 76, borderRadius: '50%',
+    background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)',
+    border: '2px solid rgba(255,255,255,0.25)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff',
   },
 };
 
