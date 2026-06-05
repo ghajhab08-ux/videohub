@@ -1,27 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AdminLayout from '../../components/layout/AdminLayout';
-import { CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle, UploadCloud } from 'lucide-react';
 import { CATEGORIES } from '../../constants/categories';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../config';
 
-
-
 const AdminUpload = () => {
     const { user } = useAuth();
     const token = user?.token;
+    const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
         title: '',
         description: '',
         categories: [],
         thumbnail: '',
-        videoUrl: '',
-        sourceType: 'bunny'
+        videoUrl: '', // only used if sourceType is embedded
+        sourceType: 'bunny',
+        status: 'published'
     });
-
+    
+    const [videoFile, setVideoFile] = useState(null);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadStatus, setUploadStatus] = useState('idle');
     const [error, setError] = useState('');
+    const fileInputRef = useRef(null);
 
     const handleCategoryToggle = (cat) => {
         setFormData(prev => ({
@@ -32,30 +36,79 @@ const AdminUpload = () => {
         }));
     };
 
-    const handleUpload = async (e) => {
+    const handleUpload = (e) => {
         e.preventDefault();
 
-        if (!formData.title || !formData.videoUrl || formData.categories.length === 0) {
-            return setError('Title, at least one Category, and Video URL are required');
+        if (!formData.title || formData.categories.length === 0) {
+            return setError('Title and at least one Category are required');
         }
 
-        if (formData.sourceType === 'bunny') {
-            const allowedPrefixes = [
-                'https://pvideos-cdn.b-cdn.net/',
-                'https://videohub-cdn.b-cdn.net/'
-            ];
-            const isValid = allowedPrefixes.some(prefix => formData.videoUrl.startsWith(prefix));
-            if (!isValid) {
-                return setError(`Video URL must start with a valid Bunny CDN domain (e.g. ${allowedPrefixes.join(' or ')})`);
-            }
-        } else if (formData.sourceType === 'embedded') {
+        if (formData.sourceType === 'bunny' && !videoFile) {
+            return setError('Please select a video file to upload');
+        }
+
+        if (formData.sourceType === 'embedded') {
+            if (!formData.videoUrl) return setError('Video URL is required for embedded videos');
             try {
                 new URL(formData.videoUrl);
             } catch (e) {
                 return setError('Please enter a valid Video URL');
             }
+            
+            // Handle embedded upload with fetch (no file)
+            uploadEmbedded();
+            return;
         }
 
+        // Handle Bunny file upload with XMLHttpRequest for progress
+        setUploadStatus('submitting');
+        setError('');
+        setUploadProgress(0);
+
+        const data = new FormData();
+        data.append('title', formData.title);
+        data.append('description', formData.description);
+        data.append('categories', JSON.stringify(formData.categories));
+        data.append('thumbnail', formData.thumbnail);
+        data.append('status', formData.status);
+        data.append('file', videoFile);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE}/api/admin/upload-video-file`, true);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+                const percentComplete = Math.round((event.loaded / event.total) * 100);
+                setUploadProgress(percentComplete);
+            }
+        };
+
+        xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                setUploadStatus('success');
+                // Redirect after brief delay
+                setTimeout(() => navigate('/admin/videos'), 2000);
+            } else {
+                let errMessage = 'Upload failed';
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    errMessage = response.error || errMessage;
+                } catch(e){}
+                setError(errMessage);
+                setUploadStatus('error');
+            }
+        };
+
+        xhr.onerror = () => {
+            setError('Network error occurred during upload');
+            setUploadStatus('error');
+        };
+
+        xhr.send(data);
+    };
+
+    const uploadEmbedded = async () => {
         try {
             setUploadStatus('submitting');
             setError('');
@@ -72,6 +125,7 @@ const AdminUpload = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Upload failed');
             setUploadStatus('success');
+            setTimeout(() => navigate('/admin/videos'), 2000);
         } catch (err) {
             setError(err.message || 'Upload failed');
             setUploadStatus('error');
@@ -85,10 +139,14 @@ const AdminUpload = () => {
             categories: [],
             thumbnail: '',
             videoUrl: '',
-            sourceType: 'bunny'
+            sourceType: 'bunny',
+            status: 'published'
         });
+        setVideoFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
         setUploadStatus('idle');
         setError('');
+        setUploadProgress(0);
     };
 
     return (
@@ -100,7 +158,7 @@ const AdminUpload = () => {
                     <div style={styles.successCard}>
                         <CheckCircle size={64} color="#4caf50" />
                         <h2>Video Published</h2>
-                        <p>Your video is now live.</p>
+                        <p>Your video is now live. Redirecting to videos list...</p>
                         <button onClick={resetForm} style={styles.resetBtn}>
                             Publish Another
                         </button>
@@ -112,8 +170,9 @@ const AdminUpload = () => {
                             style={styles.input}
                             value={formData.sourceType}
                             onChange={e => setFormData({ ...formData, sourceType: e.target.value })}
+                            disabled={uploadStatus === 'submitting'}
                         >
-                            <option value="bunny">Bunny (CDN)</option>
+                            <option value="bunny">Upload to Bunny (CDN)</option>
                             <option value="embedded">Embedded (YouTube, Vimeo, etc.)</option>
                         </select>
 
@@ -122,20 +181,48 @@ const AdminUpload = () => {
                             style={styles.input}
                             value={formData.title}
                             onChange={e => setFormData({ ...formData, title: e.target.value })}
+                            disabled={uploadStatus === 'submitting'}
                         />
 
-                        <label style={styles.label}>
-                            {formData.sourceType === 'bunny' ? 'Bunny Video URL *' : 'Video Link (Embed/URL) *'}
-                        </label>
-                        <input
+                        {formData.sourceType === 'bunny' ? (
+                            <>
+                                <label style={styles.label}>Select Video File *</label>
+                                <div style={styles.fileInputContainer}>
+                                    <input
+                                        type="file"
+                                        accept="video/*"
+                                        onChange={e => setVideoFile(e.target.files[0])}
+                                        ref={fileInputRef}
+                                        disabled={uploadStatus === 'submitting'}
+                                        style={styles.fileInput}
+                                    />
+                                    {videoFile && <span style={{color: '#aaa', fontSize: 13}}>Selected: {videoFile.name}</span>}
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <label style={styles.label}>Video Link (Embed/URL) *</label>
+                                <input
+                                    style={styles.input}
+                                    placeholder="https://www.youtube.com/watch?v=..."
+                                    value={formData.videoUrl}
+                                    onChange={e => setFormData({ ...formData, videoUrl: e.target.value })}
+                                    disabled={uploadStatus === 'submitting'}
+                                />
+                            </>
+                        )}
+
+                        <label style={styles.label}>Status</label>
+                        <select
                             style={styles.input}
-                            placeholder={formData.sourceType === 'bunny' 
-                                ? "https://videohub-cdn.b-cdn.net/video.mp4" 
-                                : "https://www.youtube.com/watch?v=..."
-                            }
-                            value={formData.videoUrl}
-                            onChange={e => setFormData({ ...formData, videoUrl: e.target.value })}
-                        />
+                            value={formData.status}
+                            onChange={e => setFormData({ ...formData, status: e.target.value })}
+                            disabled={uploadStatus === 'submitting'}
+                        >
+                            <option value="published">Published</option>
+                            <option value="draft">Draft</option>
+                            <option value="unlisted">Unlisted</option>
+                        </select>
 
                         <label style={styles.label}>Select Categories *</label>
                         <div style={styles.categoryGrid}>
@@ -145,6 +232,7 @@ const AdminUpload = () => {
                                         type="checkbox"
                                         checked={formData.categories.includes(cat)}
                                         onChange={() => handleCategoryToggle(cat)}
+                                        disabled={uploadStatus === 'submitting'}
                                     />
                                     <span>{cat}</span>
                                 </label>
@@ -156,6 +244,7 @@ const AdminUpload = () => {
                             style={styles.input}
                             value={formData.thumbnail}
                             onChange={e => setFormData({ ...formData, thumbnail: e.target.value })}
+                            disabled={uploadStatus === 'submitting'}
                         />
 
                         <label style={styles.label}>Description</label>
@@ -163,6 +252,7 @@ const AdminUpload = () => {
                             style={styles.textarea}
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
+                            disabled={uploadStatus === 'submitting'}
                         />
 
                         {error && (
@@ -172,11 +262,24 @@ const AdminUpload = () => {
                             </div>
                         )}
 
+                        {uploadStatus === 'submitting' && formData.sourceType === 'bunny' && (
+                            <div style={styles.progressContainer}>
+                                <div style={{...styles.progressBar, width: `${uploadProgress}%`}}></div>
+                                <span style={styles.progressText}>
+                                    {uploadProgress === 100 ? 'Processing...' : `Uploading... ${uploadProgress}%`}
+                                </span>
+                            </div>
+                        )}
+
                         <button
                             type="submit"
                             disabled={uploadStatus === 'submitting'}
-                            style={styles.submitBtn}
+                            style={{
+                                ...styles.submitBtn,
+                                opacity: uploadStatus === 'submitting' ? 0.6 : 1
+                            }}
                         >
+                            <UploadCloud size={18} style={{marginRight: '8px', verticalAlign: 'middle'}}/>
                             {uploadStatus === 'submitting' ? 'Publishing…' : 'Submit & Publish'}
                         </button>
                     </form>
@@ -213,6 +316,18 @@ const styles = {
         color: '#fff',
         borderRadius: '6px'
     },
+    fileInputContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        padding: '10px',
+        background: '#000',
+        border: '1px dashed #555',
+        borderRadius: '6px'
+    },
+    fileInput: {
+        color: '#fff'
+    },
     categoryGrid: {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
@@ -227,7 +342,8 @@ const styles = {
         alignItems: 'center',
         gap: '8px',
         fontSize: '14px',
-        color: '#fff'
+        color: '#fff',
+        cursor: 'pointer'
     },
     submitBtn: {
         marginTop: '20px',
@@ -235,7 +351,12 @@ const styles = {
         fontWeight: 'bold',
         background: 'var(--accent-color)',
         color: '#000',
-        borderRadius: '8px'
+        borderRadius: '8px',
+        cursor: 'pointer',
+        border: 'none',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
     },
     errorBox: {
         marginTop: '12px',
@@ -244,7 +365,8 @@ const styles = {
         color: '#ff5555',
         display: 'flex',
         gap: '8px',
-        alignItems: 'center'
+        alignItems: 'center',
+        borderRadius: '6px'
     },
     successCard: {
         padding: '50px',
@@ -256,7 +378,34 @@ const styles = {
         marginTop: '16px',
         padding: '10px 20px',
         background: '#333',
-        borderRadius: '6px'
+        color: '#fff',
+        borderRadius: '6px',
+        border: 'none',
+        cursor: 'pointer'
+    },
+    progressContainer: {
+        marginTop: '10px',
+        width: '100%',
+        background: '#222',
+        borderRadius: '10px',
+        overflow: 'hidden',
+        position: 'relative',
+        height: '24px'
+    },
+    progressBar: {
+        height: '100%',
+        background: 'var(--accent-color)',
+        transition: 'width 0.3s ease'
+    },
+    progressText: {
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        fontSize: '12px',
+        color: '#fff',
+        fontWeight: 'bold',
+        mixBlendMode: 'difference'
     }
 };
 

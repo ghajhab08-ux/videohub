@@ -11,6 +11,20 @@ const USERS_FILE = path.join(__dirname, '../data/users.json');
 
 const supabase = require('../utils/supabase');
 
+const { uploadToBunnyStream } = require('../utils/bunnyStreamUpload');
+const multer = require('multer');
+
+// Configure multer for temporary file storage
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, '../uploads'))
+    },
+    filename: function (req, file, cb) {
+        cb(null, uuidv4() + '-' + file.originalname)
+    }
+});
+const upload = multer({ storage: storage });
+
 // Local storage helpers removed - now using Supabase
 
 /**
@@ -201,7 +215,8 @@ router.post('/upload-video', async (req, res) => {
             sourceType,
             views: 0,
             rating: '100%',
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            status: req.body.status || 'published'
         };
 
         const { data, error } = await supabase
@@ -220,6 +235,95 @@ router.post('/upload-video', async (req, res) => {
     } catch (err) {
         console.error('Upload Error:', err);
         res.status(500).json({ error: 'Failed to save video metadata' });
+    }
+});
+
+/**
+ * POST /api/admin/upload-video-file
+ * Uploads a video file to Bunny Stream and saves metadata to DB
+ */
+router.post('/upload-video-file', upload.single('file'), async (req, res) => {
+    try {
+        const file = req.file;
+        let { title, description, categories, thumbnail, status } = req.body;
+
+        if (!file) {
+            return res.status(400).json({ error: 'Video file is required' });
+        }
+
+        if (!title) {
+            fs.unlinkSync(file.path);
+            return res.status(400).json({ error: 'Title is required' });
+        }
+
+        // Parse categories if it's sent as a JSON string
+        let parsedCategories = [];
+        if (categories) {
+            try {
+                parsedCategories = typeof categories === 'string' ? JSON.parse(categories) : categories;
+            } catch (e) {
+                parsedCategories = [categories];
+            }
+        }
+
+        const normalizedCategories = [...new Set(
+            parsedCategories.map(c => String(c).trim()).filter(Boolean)
+        )];
+
+        // Upload to Bunny Stream
+        const bunnyData = await uploadToBunnyStream(file.path, title);
+
+        // Remove temp file
+        fs.unlinkSync(file.path);
+
+        // Prepare DB record
+        // We map playbackUrl to videoUrl to keep frontend compatibility if it relies on videoUrl
+        // But we also store all required fields as requested (if user added them to DB).
+        // If DB doesn't have the columns, they will be ignored by Supabase if strict mode is off, 
+        // or will throw error (user needs to add them).
+        const newVideo = {
+            title: title.trim(),
+            description: description?.trim() || '',
+            category: normalizedCategories[0] || 'Uncategorized',
+            videoUrl: bunnyData.playbackUrl, // fallback/main URL field
+            thumbnail: thumbnail?.trim() || bunnyData.thumbnailUrl,
+            sourceType: 'bunny',
+            views: 0,
+            rating: '100%',
+            createdAt: new Date().toISOString(),
+            // New columns
+            bunny_video_id: bunnyData.videoId,
+            bunny_guid: bunnyData.guid,
+            playback_url: bunnyData.playbackUrl,
+            embed_url: bunnyData.embedUrl,
+            status: status || 'published',
+            upload_date: new Date().toISOString()
+        };
+
+        const { data, error } = await supabase
+            .from('videohubweb')
+            .insert([newVideo])
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Supabase Insert Error:', error);
+            return res.status(500).json({ error: 'Failed to save video metadata to database. Check if schema columns were added.' });
+        }
+
+        res.json({
+            success: true,
+            message: 'Video uploaded and published successfully',
+            video: data
+        });
+
+    } catch (err) {
+        console.error('File Upload Error:', err);
+        // Ensure temp file is removed
+        if (req.file && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
+        res.status(500).json({ error: err.message || 'Failed to upload video' });
     }
 });
 
@@ -326,7 +430,8 @@ router.put('/video/:id', async (req, res) => {
             videoUrl,
             sourceType: sourceType || 'bunny',
             thumbnail: thumbnail?.trim(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
+            ...(req.body.status && { status: req.body.status })
         };
 
         const { data, error } = await supabase

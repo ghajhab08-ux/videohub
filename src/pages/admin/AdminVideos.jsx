@@ -109,6 +109,16 @@ const AdminVideos = () => {
                                     <h3 style={styles.title}>{video.title}</h3>
                                     <p style={styles.meta}>
                                         {video.categories?.join(', ')} • {new Date(video.createdAt).toLocaleDateString()}
+                                        <span style={{
+                                            marginLeft: '8px',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            background: video.status === 'published' ? '#4caf5020' : '#ffa50020',
+                                            color: video.status === 'published' ? '#4caf50' : '#ffa500',
+                                            fontSize: '11px'
+                                        }}>
+                                            {video.status ? video.status.toUpperCase() : 'PUBLISHED'}
+                                        </span>
                                     </p>
                                 </div>
                                 <div style={styles.actions}>
@@ -164,6 +174,17 @@ const AdminVideos = () => {
                                     value={editingVideo.thumbnail}
                                     onChange={e => setEditingVideo({ ...editingVideo, thumbnail: e.target.value })}
                                 />
+
+                                <label style={styles.label}>Status</label>
+                                <select
+                                    style={styles.input}
+                                    value={editingVideo.status || 'published'}
+                                    onChange={e => setEditingVideo({ ...editingVideo, status: e.target.value })}
+                                >
+                                    <option value="published">Published</option>
+                                    <option value="draft">Draft</option>
+                                    <option value="unlisted">Unlisted</option>
+                                </select>
 
                                 <label style={styles.label}>Categories</label>
                                 <div style={styles.categoryGrid}>
