@@ -133,7 +133,8 @@ router.post('/video/:id/like', authMiddleware, async (req, res) => {
         }
 
         // Optional tracking: Remove from dislikes if it exists
-        await supabase.from('dislikes').delete().eq('videoId', id).eq('userId', userId).catch(() => {});
+        const { error: removeDislikeError } = await supabase.from('dislikes').delete().eq('videoId', id).eq('userId', userId);
+        if (removeDislikeError && removeDislikeError.code !== 'PGRST205') console.error("Warning removing dislike:", removeDislikeError);
 
         // Optional tracking: Add like
         const { error: likeError } = await supabase
@@ -184,7 +185,8 @@ router.post('/video/:id/dislike', authMiddleware, async (req, res) => {
         }
 
         // Optional tracking: Remove like if it exists
-        await supabase.from('likes').delete().eq('videoId', id).eq('userId', userId).catch(() => {});
+        const { error: removeLikeError } = await supabase.from('likes').delete().eq('videoId', id).eq('userId', userId);
+        if (removeLikeError && removeLikeError.code !== 'PGRST205') console.error("Warning removing like:", removeLikeError);
 
         // Optional tracking: Add dislike
         const { error: dislikeError } = await supabase
