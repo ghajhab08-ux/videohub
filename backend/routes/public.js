@@ -113,7 +113,8 @@ router.get('/category/:name', async (req, res) => {
 // POST /api/video/:id/like
 router.post('/video/:id/like', authMiddleware, async (req, res) => {
     const { id } = req.params;
-    const userId = req.user.id;
+    // Fallback to a zero-UUID if the admin user is logged in (admin token lacks an id)
+    const userId = req.user.id || '00000000-0000-0000-0000-000000000000';
 
     try {
         // Check if already liked
@@ -165,7 +166,7 @@ router.post('/video/:id/like', authMiddleware, async (req, res) => {
 // POST /api/video/:id/dislike
 router.post('/video/:id/dislike', authMiddleware, async (req, res) => {
     const { id } = req.params;
-    const userId = req.user.id;
+    const userId = req.user.id || '00000000-0000-0000-0000-000000000000';
 
     try {
         // Check if already disliked
@@ -217,7 +218,7 @@ router.post('/video/:id/dislike', authMiddleware, async (req, res) => {
 router.post('/video/:id/comment', authMiddleware, async (req, res) => {
     const { id } = req.params;
     const { text } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.id || '00000000-0000-0000-0000-000000000000';
     const username = req.user.username;
 
     if (!text) return res.status(400).json({ error: 'Comment text is required' });
