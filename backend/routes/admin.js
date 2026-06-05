@@ -11,7 +11,7 @@ const USERS_FILE = path.join(__dirname, '../data/users.json');
 
 const supabase = require('../utils/supabase');
 
-const { uploadToBunnyStream } = require('../utils/bunnyStreamUpload');
+const { uploadToBunnyStorage } = require('../utils/bunnyStorage');
 const multer = require('multer');
 
 // Configure multer for temporary file storage
@@ -270,32 +270,31 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
             parsedCategories.map(c => String(c).trim()).filter(Boolean)
         )];
 
-        // Upload to Bunny Stream
-        const bunnyData = await uploadToBunnyStream(file.path, title);
+        // Upload to Bunny Storage using existing integration
+        const fileName = uuidv4() + '-' + file.originalname.replace(/\s+/g, '_');
+        const cdnUrl = await uploadToBunnyStorage(file.path, fileName);
 
         // Remove temp file
         fs.unlinkSync(file.path);
 
-        // Prepare DB record
-        // We map playbackUrl to videoUrl to keep frontend compatibility if it relies on videoUrl
-        // But we also store all required fields as requested (if user added them to DB).
-        // If DB doesn't have the columns, they will be ignored by Supabase if strict mode is off, 
-        // or will throw error (user needs to add them).
+        // Pull zone base (strip trailing slash)
+        const pullZone = (process.env.BUNNY_PULL_ZONE || 'https://videohub-cdn.b-cdn.net').replace(/\/$/, '');
+
         const newVideo = {
             title: title.trim(),
             description: description?.trim() || '',
             category: normalizedCategories[0] || 'Uncategorized',
-            videoUrl: bunnyData.playbackUrl, // fallback/main URL field
-            thumbnail: thumbnail?.trim() || bunnyData.thumbnailUrl,
+            videoUrl: cdnUrl,
+            thumbnail: thumbnail?.trim() || '',
             sourceType: 'bunny',
             views: 0,
             rating: '100%',
             createdAt: new Date().toISOString(),
-            // New columns
-            bunny_video_id: bunnyData.videoId,
-            bunny_guid: bunnyData.guid,
-            playback_url: bunnyData.playbackUrl,
-            embed_url: bunnyData.embedUrl,
+            // New columns (added to DB via SQL)
+            bunny_video_id: fileName,
+            bunny_guid: fileName,
+            playback_url: cdnUrl,
+            embed_url: cdnUrl,
             status: status || 'published',
             upload_date: new Date().toISOString()
         };
