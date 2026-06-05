@@ -10,11 +10,9 @@ const fs = require('fs');
 const uploadToBunnyStorage = async (filePath, fileName) => {
     const storageZone = process.env.BUNNY_STORAGE_ZONE_NAME;
     const accessKey = process.env.BUNNY_STORAGE_API_KEY;
-    const region = process.env.BUNNY_STORAGE_REGION || 'storage';
+    const baseEndpoint = process.env.BUNNY_STORAGE_ENDPOINT || 'https://storage.bunnycdn.com';
 
-    // The endpoint format: https://{region}.bunnycdn.com/{storageZoneName}/{path}/{filename}
-    // We'll put videos in a subfolder called 'pvideos'
-    const endpoint = `https://${region}.storage.bunnycdn.com/${storageZone}/pvideos/${fileName}`;
+    const endpoint = `${baseEndpoint}/${storageZone}/pvideos/${fileName}`;
 
     try {
         console.log(`Starting stream upload to Bunny: ${fileName}`);
