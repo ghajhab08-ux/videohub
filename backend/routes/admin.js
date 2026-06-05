@@ -518,9 +518,7 @@ router.delete('/video/:id', async (req, res) => {
     }
 });
 
-/**
- * PUT /api/admin/submission/:id
- */
+
 router.put('/submission/:id', async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
