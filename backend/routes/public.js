@@ -117,33 +117,98 @@ router.post('/video/:id/like', authMiddleware, async (req, res) => {
 
     try {
         // Check if already liked
-        const { data: existingLike } = await supabase
+        const { data: existingLike, error: checkError } = await supabase
             .from('likes')
             .select('*')
             .eq('videoId', id)
             .eq('userId', userId)
-            .single();
+            .maybeSingle();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+            console.error("Error checking likes table:", checkError);
+        }
 
         if (existingLike) {
             return res.status(400).json({ error: 'You already liked this video' });
         }
+
+        // Remove from dislikes if it exists
+        await supabase.from('dislikes').delete().eq('videoId', id).eq('userId', userId);
 
         // Add like
         const { error: likeError } = await supabase
             .from('likes')
             .insert([{ videoId: id, userId }]);
 
-        if (likeError) throw likeError;
+        if (likeError) {
+            console.error("Error inserting like:", likeError);
+            return res.status(500).json({ error: 'Failed to record like. Make sure "likes" table exists.' });
+        }
 
-        // Update like count in video table (if applicable)
-        // Note: Better to count from likes table, but user asked to update videohubweb
+        // Update like count in video table
         const { data: video } = await supabase.from('videohubweb').select('likes').eq('id', id).single();
-        await supabase.from('videohubweb').update({ likes: (video.likes || 0) + 1 }).eq('id', id);
+        const { error: updateError } = await supabase.from('videohubweb').update({ likes: (video?.likes || 0) + 1 }).eq('id', id);
+
+        if (updateError) {
+             console.error("Error updating videohubweb likes:", updateError);
+             return res.status(500).json({ error: 'Failed to update like count on video. Make sure "likes" column exists.' });
+        }
 
         res.json({ success: true, message: 'Video liked' });
     } catch (err) {
         console.error('Like Error:', err);
         res.status(500).json({ error: 'Failed to like video' });
+    }
+});
+
+// POST /api/video/:id/dislike
+router.post('/video/:id/dislike', authMiddleware, async (req, res) => {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    try {
+        // Check if already disliked
+        const { data: existingDislike, error: checkError } = await supabase
+            .from('dislikes')
+            .select('*')
+            .eq('videoId', id)
+            .eq('userId', userId)
+            .maybeSingle();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+            console.error("Error checking dislikes table:", checkError);
+        }
+
+        if (existingDislike) {
+            return res.status(400).json({ error: 'You already disliked this video' });
+        }
+
+        // Remove like if it exists
+        await supabase.from('likes').delete().eq('videoId', id).eq('userId', userId);
+
+        // Add dislike
+        const { error: dislikeError } = await supabase
+            .from('dislikes')
+            .insert([{ videoId: id, userId }]);
+
+        if (dislikeError) {
+             console.error("Error inserting dislike:", dislikeError);
+             return res.status(500).json({ error: 'Failed to record dislike. Make sure "dislikes" table exists.' });
+        }
+
+        // Update dislike count in video table
+        const { data: video } = await supabase.from('videohubweb').select('dislikes').eq('id', id).single();
+        const { error: updateError } = await supabase.from('videohubweb').update({ dislikes: (video?.dislikes || 0) + 1 }).eq('id', id);
+
+        if (updateError) {
+             console.error("Error updating videohubweb dislikes:", updateError);
+             return res.status(500).json({ error: 'Failed to update dislike count on video. Make sure "dislikes" column exists.' });
+        }
+
+        res.json({ success: true, message: 'Video disliked' });
+    } catch (err) {
+        console.error('Dislike Error:', err);
+        res.status(500).json({ error: 'Failed to dislike video' });
     }
 });
 

@@ -69,9 +69,10 @@ const VideoWatch = () => {
       return;
     }
 
-    if (action === 'Like') {
+    if (action === 'Like' || action === 'Dislike') {
       try {
-        const res = await fetch(`${API_BASE}/api/video/${id}/like`, {
+        const endpoint = action === 'Like' ? 'like' : 'dislike';
+        const res = await fetch(`${API_BASE}/api/video/${id}/${endpoint}`, {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -80,14 +81,13 @@ const VideoWatch = () => {
         });
         const data = await res.json();
         if (res.ok) {
-          alert('Video liked!');
-          // Refresh video data to show new like count
+          // Refresh video data to show new like/dislike count
           fetchVideoData();
         } else {
-          alert(data.error || 'Failed to like video');
+          alert(data.error || `Failed to ${endpoint} video. Check Supabase tables.`);
         }
       } catch (err) {
-        alert('Error liking video');
+        alert(`Error: failed to ${action.toLowerCase()} video`);
       }
       return;
     }
