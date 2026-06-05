@@ -22,6 +22,7 @@ const AdminUpload = () => {
     });
     
     const [videoFile, setVideoFile] = useState(null);
+    const [bunnyUploadType, setBunnyUploadType] = useState('file');
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadStatus, setUploadStatus] = useState('idle');
     const [error, setError] = useState('');
@@ -43,8 +44,20 @@ const AdminUpload = () => {
             return setError('Title is required');
         }
 
-        if (formData.sourceType === 'bunny' && !videoFile) {
-            return setError('Please select a video file to upload');
+        if (formData.sourceType === 'bunny') {
+            if (bunnyUploadType === 'file' && !videoFile) {
+                return setError('Please select a video file to upload');
+            }
+            if (bunnyUploadType === 'url') {
+                if (!formData.videoUrl) return setError('Bunny Video URL is required');
+                try {
+                    new URL(formData.videoUrl);
+                } catch (e) {
+                    return setError('Please enter a valid Video URL');
+                }
+                uploadEmbedded();
+                return;
+            }
         }
 
         if (formData.sourceType === 'embedded') {
@@ -143,6 +156,7 @@ const AdminUpload = () => {
             status: 'published'
         });
         setVideoFile(null);
+        setBunnyUploadType('file');
         if (fileInputRef.current) fileInputRef.current.value = '';
         setUploadStatus('idle');
         setError('');
@@ -186,18 +200,44 @@ const AdminUpload = () => {
 
                         {formData.sourceType === 'bunny' ? (
                             <>
-                                <label style={styles.label}>Select Video File *</label>
-                                <div style={styles.fileInputContainer}>
-                                    <input
-                                        type="file"
-                                        accept="video/*"
-                                        onChange={e => setVideoFile(e.target.files[0])}
-                                        ref={fileInputRef}
-                                        disabled={uploadStatus === 'submitting'}
-                                        style={styles.fileInput}
-                                    />
-                                    {videoFile && <span style={{color: '#aaa', fontSize: 13}}>Selected: {videoFile.name}</span>}
-                                </div>
+                                <label style={styles.label}>Upload Method *</label>
+                                <select
+                                    style={{...styles.input, marginBottom: '12px'}}
+                                    value={bunnyUploadType}
+                                    onChange={e => setBunnyUploadType(e.target.value)}
+                                    disabled={uploadStatus === 'submitting'}
+                                >
+                                    <option value="file">Choose file</option>
+                                    <option value="url">From URL</option>
+                                </select>
+
+                                {bunnyUploadType === 'file' ? (
+                                    <>
+                                        <label style={styles.label}>Select Video File *</label>
+                                        <div style={styles.fileInputContainer}>
+                                            <input
+                                                type="file"
+                                                accept="video/*"
+                                                onChange={e => setVideoFile(e.target.files[0])}
+                                                ref={fileInputRef}
+                                                disabled={uploadStatus === 'submitting'}
+                                                style={styles.fileInput}
+                                            />
+                                            {videoFile && <span style={{color: '#aaa', fontSize: 13}}>Selected: {videoFile.name}</span>}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <label style={styles.label}>Bunny Video URL *</label>
+                                        <input
+                                            style={styles.input}
+                                            placeholder="https://videohub-cdn.b-cdn.net/..."
+                                            value={formData.videoUrl}
+                                            onChange={e => setFormData({ ...formData, videoUrl: e.target.value })}
+                                            disabled={uploadStatus === 'submitting'}
+                                        />
+                                    </>
+                                )}
                             </>
                         ) : (
                             <>
@@ -262,7 +302,7 @@ const AdminUpload = () => {
                             </div>
                         )}
 
-                        {uploadStatus === 'submitting' && formData.sourceType === 'bunny' && (
+                        {uploadStatus === 'submitting' && formData.sourceType === 'bunny' && bunnyUploadType === 'file' && (
                             <div style={styles.progressContainer}>
                                 <div style={{...styles.progressBar, width: `${uploadProgress}%`}}></div>
                                 <span style={styles.progressText}>
