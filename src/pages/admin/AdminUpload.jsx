@@ -40,9 +40,13 @@ const AdminUpload = () => {
         }
 
         if (formData.sourceType === 'bunny') {
-            const bunnyBaseUrl = 'https://pvideos-cdn.b-cdn.net/';
-            if (!formData.videoUrl.startsWith(bunnyBaseUrl)) {
-                return setError(`Video URL must start with ${bunnyBaseUrl}`);
+            const allowedPrefixes = [
+                'https://pvideos-cdn.b-cdn.net/',
+                'https://videohub-cdn.b-cdn.net/'
+            ];
+            const isValid = allowedPrefixes.some(prefix => formData.videoUrl.startsWith(prefix));
+            if (!isValid) {
+                return setError(`Video URL must start with a valid Bunny CDN domain (e.g. ${allowedPrefixes.join(' or ')})`);
             }
         } else if (formData.sourceType === 'embedded') {
             try {
@@ -126,7 +130,7 @@ const AdminUpload = () => {
                         <input
                             style={styles.input}
                             placeholder={formData.sourceType === 'bunny' 
-                                ? "https://pvideos-cdn.b-cdn.net/video.mp4" 
+                                ? "https://videohub-cdn.b-cdn.net/video.mp4" 
                                 : "https://www.youtube.com/watch?v=..."
                             }
                             value={formData.videoUrl}

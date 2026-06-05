@@ -164,13 +164,18 @@ router.post('/upload-video', async (req, res) => {
     }
 
     if (sourceType === 'bunny') {
-        const bunnyBaseUrl = process.env.BUNNY_PULL_ZONE || 'https://pvideos-cdn.b-cdn.net/';
-        // Ensure bunnyBaseUrl ends with a slash for validation
+        const bunnyBaseUrl = process.env.BUNNY_PULL_ZONE || 'https://videohub-cdn.b-cdn.net/';
         const normalizedBase = bunnyBaseUrl.endsWith('/') ? bunnyBaseUrl : `${bunnyBaseUrl}/`;
+        const allowedPrefixes = [
+            normalizedBase,
+            'https://pvideos-cdn.b-cdn.net/',
+            'https://videohub-cdn.b-cdn.net/'
+        ];
         
-        if (!videoUrl.startsWith(normalizedBase)) {
+        const isValid = allowedPrefixes.some(prefix => videoUrl.startsWith(prefix));
+        if (!isValid) {
             return res.status(400).json({
-                error: `Invalid Video URL. Must start with ${normalizedBase}`
+                error: `Invalid Video URL. Must start with a valid Bunny CDN domain (e.g. ${allowedPrefixes.filter((v, i, a) => a.indexOf(v) === i).join(' or ')})`
             });
         }
     } else if (sourceType === 'embedded') {
@@ -287,10 +292,18 @@ router.put('/video/:id', async (req, res) => {
     const effectiveSourceType = sourceType || 'bunny'; 
 
     if (effectiveSourceType === 'bunny') {
-        const bunnyBaseUrl = 'https://pvideos-cdn.b-cdn.net/';
-        if (!videoUrl.startsWith(bunnyBaseUrl)) {
+        const bunnyBaseUrl = process.env.BUNNY_PULL_ZONE || 'https://videohub-cdn.b-cdn.net/';
+        const normalizedBase = bunnyBaseUrl.endsWith('/') ? bunnyBaseUrl : `${bunnyBaseUrl}/`;
+        const allowedPrefixes = [
+            normalizedBase,
+            'https://pvideos-cdn.b-cdn.net/',
+            'https://videohub-cdn.b-cdn.net/'
+        ];
+        
+        const isValid = allowedPrefixes.some(prefix => videoUrl.startsWith(prefix));
+        if (!isValid) {
             return res.status(400).json({
-                error: `Invalid Video URL. Must start with ${bunnyBaseUrl}`
+                error: `Invalid Video URL. Must start with a valid Bunny CDN domain (e.g. ${allowedPrefixes.filter((v, i, a) => a.indexOf(v) === i).join(' or ')})`
             });
         }
     } else if (effectiveSourceType === 'embedded') {
