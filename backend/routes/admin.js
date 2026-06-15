@@ -224,11 +224,34 @@ router.post('/upload-video', async (req, res) => {
             updatedAt: new Date().toISOString()
         };
 
-        const { data, error } = await supabase
+        let { data, error } = await supabase
             .from('videohubweb')
             .insert([newVideo])
             .select()
             .single();
+
+        if (error && error.code === '42703') {
+            console.warn('Supabase Insert Warning: New columns not found, falling back to original schema for upload-video.');
+            const fallbackVideo = {
+                title: newVideo.title,
+                description: newVideo.description,
+                category: newVideo.category,
+                videoUrl: newVideo.videoUrl,
+                thumbnail: newVideo.thumbnail,
+                sourceType: newVideo.sourceType,
+                views: newVideo.views,
+                rating: newVideo.rating,
+                createdAt: newVideo.createdAt,
+                status: newVideo.status
+            };
+            const fallbackRes = await supabase
+                .from('videohubweb')
+                .insert([fallbackVideo])
+                .select()
+                .single();
+            data = fallbackRes.data;
+            error = fallbackRes.error;
+        }
 
         if (error) throw error;
 
