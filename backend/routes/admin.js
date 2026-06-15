@@ -211,12 +211,17 @@ router.post('/upload-video', async (req, res) => {
             description: description?.trim() || '',
             category: normalizedCategories[0] || 'Uncategorized', // Using single category as per request
             videoUrl,
+            bunnyUrl: sourceType === 'bunny' ? videoUrl : '',
             thumbnail: thumbnail?.trim() || '',
             sourceType,
             views: 0,
             rating: '100%',
             createdAt: new Date().toISOString(),
-            status: req.body.status || 'published'
+            status: req.body.status || 'published',
+            uploadType: req.body.uploadType || 'url',
+            originalFileName: '',
+            uploadDate: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
 
         const { data, error } = await supabase
@@ -245,7 +250,7 @@ router.post('/upload-video', async (req, res) => {
 router.post('/upload-video-file', upload.single('file'), async (req, res) => {
     try {
         const file = req.file;
-        let { title, description, categories, thumbnail, status } = req.body;
+        let { title, description, categories, thumbnail, status, uploadType } = req.body;
 
         if (!file) {
             return res.status(400).json({ error: 'Video file is required' });
@@ -285,6 +290,7 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
             description: description?.trim() || '',
             category: normalizedCategories[0] || 'Uncategorized',
             videoUrl: cdnUrl,
+            bunnyUrl: cdnUrl,
             thumbnail: thumbnail?.trim() || '',
             sourceType: 'bunny',
             views: 0,
@@ -296,7 +302,11 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
             playback_url: cdnUrl,
             embed_url: cdnUrl,
             status: status || 'published',
-            upload_date: new Date().toISOString()
+            upload_date: new Date().toISOString(),
+            uploadDate: new Date().toISOString(),
+            originalFileName: file.originalname,
+            uploadType: uploadType || 'single',
+            updatedAt: new Date().toISOString()
         };
 
         // First try inserting with all fields
@@ -455,10 +465,12 @@ router.put('/video/:id', async (req, res) => {
             description: description?.trim() || '',
             category: normalizedCategories[0] || 'Uncategorized',
             videoUrl,
+            bunnyUrl: effectiveSourceType === 'bunny' ? videoUrl : '',
             sourceType: sourceType || 'bunny',
             thumbnail: thumbnail?.trim(),
             updatedAt: new Date().toISOString(),
-            ...(req.body.status && { status: req.body.status })
+            ...(req.body.status && { status: req.body.status }),
+            ...(req.body.uploadType && { uploadType: req.body.uploadType })
         };
 
         let { data, error } = await supabase
