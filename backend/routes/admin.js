@@ -230,7 +230,7 @@ router.post('/upload-video', async (req, res) => {
             .select()
             .single();
 
-        if (error && error.code === '42703') {
+        if (error && (error.code === '42703' || error.code === 'PGRST204')) {
             console.warn('Supabase Insert Warning: New columns not found, falling back to original schema for upload-video.');
             const fallbackVideo = {
                 title: newVideo.title,
@@ -328,7 +328,7 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
             upload_date: new Date().toISOString(),
             uploadDate: new Date().toISOString(),
             originalFileName: file.originalname,
-            uploadType: uploadType || 'single',
+            uploadType: (uploadType === 'bulk' || uploadType === 'folder') ? 'single' : (uploadType || 'single'),
             updatedAt: new Date().toISOString()
         };
 
@@ -344,7 +344,7 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
         error = insertRes.error;
 
         // If insert fails due to missing columns (error code 42703), try again without new columns
-        if (error && error.code === '42703') {
+        if (error && (error.code === '42703' || error.code === 'PGRST204')) {
             console.warn('Supabase Insert Warning: New columns not found, falling back to original schema.');
             const fallbackVideo = {
                 title: newVideo.title,
@@ -355,7 +355,8 @@ router.post('/upload-video-file', upload.single('file'), async (req, res) => {
                 sourceType: newVideo.sourceType,
                 views: newVideo.views,
                 rating: newVideo.rating,
-                createdAt: newVideo.createdAt
+                createdAt: newVideo.createdAt,
+                status: newVideo.status
             };
             const fallbackRes = await supabase
                 .from('videohubweb')
@@ -503,7 +504,7 @@ router.put('/video/:id', async (req, res) => {
             .select()
             .single();
 
-        if (error && error.code === '42703' && req.body.status) {
+        if (error && (error.code === '42703' || error.code === 'PGRST204') && req.body.status) {
             console.warn('Supabase Update Warning: Status column not found, falling back.');
             const fallbackData = { ...updateData };
             delete fallbackData.status;
